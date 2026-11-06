@@ -70,12 +70,12 @@ function ReviewReport() {
         setIsLoadingDetail(true);
         setError("");
         try {
-            const response = await api.get(
-                `/supervisor/daily-reports/${report.id}`
-            );
-            
-                setReportDetail(response.data?.data ?? null);
-        } catch (err) {
+    const response = await api.get(
+        `/supervisor/daily-reports/${report.id}`
+    );
+
+    setReportDetail(response.data?.data ?? null);
+} catch (err) {
             setError(
                 err.response?.data?.message ||
                     "Gagal mengambil detail laporan."
