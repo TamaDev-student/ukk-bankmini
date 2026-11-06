@@ -69,19 +69,18 @@ function ReviewReport() {
         setReportDetail(null);
         setIsLoadingDetail(true);
         setError("");
-    
         try {
             const response = await api.get(
                 `/supervisor/daily-reports/${report.id}`
             );
-    
-            setReportDetail(response.data?.data ?? null);
+            
+                setReportDetail(response.data?.data ?? null);
         } catch (err) {
             setError(
                 err.response?.data?.message ||
                     "Gagal mengambil detail laporan."
             );
-    
+
             setSelectedReport(null);
         } finally {
             setIsLoadingDetail(false);
@@ -90,26 +89,21 @@ function ReviewReport() {
 
     const handleApprove = async () => {
         if (!approvingReport) return;
-    
+
         const reportId = approvingReport.id;
-    
         setProcessingId(reportId);
         setError("");
         setSuccessMessage("");
-    
         try {
             const response = await api.post(
                 `/supervisor/daily-reports/${reportId}/approve`
             );
-    
             setReports((currentReports) =>
                 currentReports.filter((item) => item.id !== reportId)
             );
-    
             setSuccessMessage(
                 response.data?.message || "Laporan berhasil disetujui."
             );
-    
             setApprovingReport(null);
         } catch (err) {
             setError(

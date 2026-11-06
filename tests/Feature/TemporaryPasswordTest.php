@@ -122,8 +122,12 @@ test('password sementara kedaluwarsa tidak dapat digunakan dan admin dapat mener
 
 test('pembuatan akun menghasilkan password acak satu kali dan mempertahankan akun lama', function () {
     [$admin, $adminToken] = temporaryPasswordAdmin();
-    $major = Major::factory()->create();
-    $schoolClass = SchoolClass::factory()->create([
+    $major = Major::firstOrCreate(
+        ['code' => 'RPL'],
+        ['name' => 'Rekayasa Perangkat Lunak']
+    );
+    $schoolClass = SchoolClass::firstOrCreate([
+        'name' => 'X RPL 1',
         'major_id' => $major->id,
     ]);
     $headers = ['Authorization' => 'Bearer '.$adminToken];

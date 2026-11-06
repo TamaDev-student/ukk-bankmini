@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { FunctionSquare, LoaderCircle, RefreshCw, ShieldAlert } from "lucide-react";
+import { LoaderCircle, RefreshCw, ShieldAlert } from "lucide-react";
 
 import { useAuth } from "./context/AuthContext";
 import { getRoleHomePath } from "./config/roles";

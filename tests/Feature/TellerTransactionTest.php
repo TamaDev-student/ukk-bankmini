@@ -43,12 +43,15 @@ function tellerWithTokenForTransactionTest(): array
 
 function setupCustomerForTransaction()
 {
+    static $counter = 0;
+    $counter++;
+
     $major = Major::firstOrCreate(['name' => 'Test Major', 'code' => 'TST']);
     $schoolClass = SchoolClass::firstOrCreate(['name' => '10 TST', 'major_id' => $major->id]);
 
     $customer = Customer::create([
-        'account_number' => 'TST001',
-        'student_number' => '123456789',
+        'account_number' => 'TST'.str_pad((string) $counter, 3, '0', STR_PAD_LEFT),
+        'student_number' => '12345678'.$counter,
         'student_name' => 'Test Student',
         'class_id' => $schoolClass->id,
         'status' => 'active',
@@ -57,6 +60,40 @@ function setupCustomerForTransaction()
     ]);
 
     return $customer;
+}
+
+function customerTokenForTransactionTest(Customer $customer): string
+{
+    static $counter = 0;
+    $counter++;
+
+    $user = User::create([
+        'name' => 'Customer Txn '.$counter,
+        'username' => 'customer_txn_'.$counter,
+        'full_name' => 'Customer Txn '.$counter,
+        'email' => 'customer_txn_'.$counter.'@bank.com',
+        'password' => Hash::make('password123'),
+        'role' => 'nasabah',
+        'status' => 'active',
+    ]);
+    $customer->update(['user_id' => $user->id]);
+
+    return $user->createToken('test')->plainTextToken;
+}
+
+function confirmTransactionForCustomer(
+    TestCase $test,
+    string $token,
+    int $transactionId,
+    string $pin = '123456'
+) {
+    app('auth')->forgetGuards();
+
+    return $test->postJson(
+        '/api/customer/transactions/'.$transactionId.'/confirm',
+        ['pin' => $pin],
+        ['Authorization' => 'Bearer '.$token]
+    );
 }
 
 function issueScanTokenForTransactionTest(TestCase $test, string $authToken, Customer $customer): string
@@ -74,9 +111,10 @@ function issueScanTokenForTransactionTest(TestCase $test, string $authToken, Cus
     return $response->json('data.scan_token');
 }
 
-test('teller can deposit and journals are recorded', function () {
+test('deposit remains pending until customer confirms before journals are recorded', function () {
     [$teller, $token] = tellerWithTokenForTransactionTest();
     $customer = setupCustomerForTransaction();
+    $customerToken = customerTokenForTransactionTest($customer);
 
     $response = $this->postJson('/api/teller/deposit', [
         'customer_id' => $customer->id,
@@ -87,15 +125,26 @@ test('teller can deposit and journals are recorded', function () {
     ]);
 
     $response->assertStatus(201)
-        ->assertJsonPath('message', 'Setoran berhasil')
-        ->assertJsonPath('balance', 50000);
+        ->assertJsonPath('message', 'Permintaan setoran berhasil dibuat. Menunggu konfirmasi nasabah.')
+        ->assertJsonPath('data.status', 'pending')
+        ->assertJsonPath('balance', 0);
 
-    expect($customer->fresh()->balance)->toBe(50000);
+    expect($customer->fresh()->balance)->toBe(0);
 
     $transaction = Transaction::where('customer_id', $customer->id)->first();
     expect($transaction)->not->toBeNull();
     expect($transaction->amount)->toBe(50000);
     expect($transaction->transaction_type)->toBe('deposit');
+    expect($transaction->status)->toBe('pending');
+    expect(Journal::where('transaction_id', $transaction->id)->count())->toBe(0);
+
+    confirmTransactionForCustomer($this, $customerToken, $transaction->id)
+        ->assertOk()
+        ->assertJsonPath('data.status', 'approved')
+        ->assertJsonPath('data.balance', 50000);
+
+    $transaction->refresh();
+    expect($customer->fresh()->balance)->toBe(50000);
 
     $journals = Journal::where('transaction_id', $transaction->id)->get();
     expect($journals)->toHaveCount(2);
@@ -107,29 +156,44 @@ test('teller can deposit and journals are recorded', function () {
     $creditJournal = $journals->where('type', 'credit')->first();
     expect($creditJournal->account_name)->toBe('Tabungan Nasabah');
     expect($creditJournal->amount)->toBe(50000);
+
+    confirmTransactionForCustomer($this, $customerToken, $transaction->id)
+        ->assertUnprocessable();
+    expect($customer->fresh()->balance)->toBe(50000)
+        ->and(Journal::where('transaction_id', $transaction->id)->count())->toBe(2);
 });
 
-test('teller can withdraw with valid pin and sufficient balance', function () {
+test('withdrawal remains pending until customer confirms with PIN', function () {
     [$teller, $token] = tellerWithTokenForTransactionTest();
     $customer = setupCustomerForTransaction();
+    $customerToken = customerTokenForTransactionTest($customer);
     $customer->update(['balance' => 60000]);
 
     $response = $this->postJson('/api/teller/withdrawal', [
         'customer_id' => $customer->id,
         'amount' => 20000,
-        'pin' => '123456',
     ], [
         'Authorization' => "Bearer $token",
     ]);
 
     $response->assertStatus(200)
-        ->assertJsonPath('message', 'Penarikan berhasil')
-        ->assertJsonPath('balance', 40000);
+        ->assertJsonPath('message', 'Permintaan penarikan berhasil dibuat. Menunggu konfirmasi nasabah.')
+        ->assertJsonPath('data.status', 'pending')
+        ->assertJsonPath('balance', 60000);
 
-    expect($customer->fresh()->balance)->toBe(40000);
+    expect($customer->fresh()->balance)->toBe(60000);
 
     $transaction = Transaction::where('customer_id', $customer->id)->where('transaction_type', 'withdrawal')->first();
     expect($transaction)->not->toBeNull();
+    expect($transaction->status)->toBe('pending');
+    expect(Journal::where('transaction_id', $transaction->id)->count())->toBe(0);
+
+    confirmTransactionForCustomer($this, $customerToken, $transaction->id)
+        ->assertOk()
+        ->assertJsonPath('data.status', 'approved')
+        ->assertJsonPath('data.balance', 40000);
+
+    expect($customer->fresh()->balance)->toBe(40000);
 
     $journals = Journal::where('transaction_id', $transaction->id)->get();
     expect($journals)->toHaveCount(2);
@@ -186,13 +250,12 @@ test('withdrawal rejected if balance falls below 10000', function () {
     $response = $this->postJson('/api/teller/withdrawal', [
         'customer_id' => $customer->id,
         'amount' => 20000,
-        'pin' => '123456',
     ], [
         'Authorization' => "Bearer $token",
     ]);
 
-    $response->assertStatus(400)
-        ->assertJsonPath('message', 'Saldo tidak mencukupi');
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors(['amount']);
 
     // Balance shouldn't change
     expect($customer->fresh()->balance)->toBe(25000);
@@ -202,28 +265,69 @@ test('withdrawal rejected if balance falls below 10000', function () {
     expect($transactionCount)->toBe(0);
 });
 
-test('withdrawal rejected with invalid pin', function () {
+test('invalid PIN is rejected on customer confirmation without processing withdrawal', function () {
     [$teller, $token] = tellerWithTokenForTransactionTest();
     $customer = setupCustomerForTransaction();
+    $customerToken = customerTokenForTransactionTest($customer);
     $customer->update(['balance' => 50000]);
 
     $response = $this->postJson('/api/teller/withdrawal', [
         'customer_id' => $customer->id,
         'amount' => 10000,
-        'pin' => '000000', // wrong pin
     ], [
         'Authorization' => "Bearer $token",
     ]);
 
-    $response->assertStatus(403)
-        ->assertJsonPath('message', 'PIN keamanan tidak valid');
+    $response->assertOk()
+        ->assertJsonPath('data.status', 'pending');
 
-    expect($customer->fresh()->balance)->toBe(50000);
+    $transaction = Transaction::where('customer_id', $customer->id)->firstOrFail();
+    confirmTransactionForCustomer($this, $customerToken, $transaction->id, '000000')
+        ->assertUnprocessable()
+        ->assertJsonPath('remaining_attempts', 2);
+
+    expect($transaction->fresh()->status)->toBe('pending')
+        ->and($customer->fresh()->balance)->toBe(50000)
+        ->and(Journal::where('transaction_id', $transaction->id)->count())->toBe(0);
+});
+
+test('only the owning customer can confirm a pending transaction', function () {
+    [$teller] = tellerWithTokenForTransactionTest();
+    $customer = setupCustomerForTransaction();
+    $customerToken = customerTokenForTransactionTest($customer);
+    $customer->update(['balance' => 50000]);
+
+    $transaction = Transaction::create([
+        'customer_id' => $customer->id,
+        'user_id' => $teller->id,
+        'transaction_date' => now(),
+        'transaction_type' => 'withdrawal',
+        'amount' => 10000,
+        'status' => 'pending',
+    ]);
+
+    $otherCustomer = setupCustomerForTransaction();
+    $otherCustomerToken = customerTokenForTransactionTest($otherCustomer);
+
+    confirmTransactionForCustomer($this, $otherCustomerToken, $transaction->id)
+        ->assertNotFound();
+
+    expect($transaction->fresh()->status)->toBe('pending')
+        ->and($customer->fresh()->balance)->toBe(50000)
+        ->and(Journal::where('transaction_id', $transaction->id)->count())->toBe(0);
+
+    confirmTransactionForCustomer($this, $customerToken, $transaction->id)
+        ->assertOk()
+        ->assertJsonPath('data.status', 'approved')
+        ->assertJsonPath('data.balance', 40000);
+    expect($customer->fresh()->balance)->toBe(40000)
+        ->and(Journal::where('transaction_id', $transaction->id)->count())->toBe(2);
 });
 
 test('multiple deposits accumulate balance correctly', function () {
     [$teller, $token] = tellerWithTokenForTransactionTest();
     $customer = setupCustomerForTransaction();
+    $customerToken = customerTokenForTransactionTest($customer);
 
     $this->postJson('/api/teller/deposit', [
         'customer_id' => $customer->id,
@@ -237,16 +341,25 @@ test('multiple deposits accumulate balance correctly', function () {
         'scan_token' => issueScanTokenForTransactionTest($this, $token, $customer),
     ], ['Authorization' => "Bearer $token"])->assertStatus(201);
 
-    expect($customer->fresh()->balance)->toBe(50000);
+    expect($customer->fresh()->balance)->toBe(0);
+    $transactions = Transaction::where('customer_id', $customer->id)
+        ->orderBy('id')
+        ->get();
+    expect($transactions)->toHaveCount(2);
 
-    $transactionCount = Transaction::where('customer_id', $customer->id)->count();
-    expect($transactionCount)->toBe(2);
+    foreach ($transactions as $transaction) {
+        confirmTransactionForCustomer($this, $customerToken, $transaction->id)
+            ->assertOk()
+            ->assertJsonPath('data.status', 'approved');
+    }
+
+    expect($customer->fresh()->balance)->toBe(50000);
 
     $journalCount = Journal::whereIn(
         'transaction_id',
         Transaction::where('customer_id', $customer->id)->pluck('id')
     )->count();
-    expect($journalCount)->toBe(4); // 2 journals per deposit
+    expect($journalCount)->toBe(4);
 });
 
 test('failed withdrawal leaves no partial state in balance transaction or journal', function () {
@@ -257,8 +370,8 @@ test('failed withdrawal leaves no partial state in balance transaction or journa
     $this->postJson('/api/teller/withdrawal', [
         'customer_id' => $customer->id,
         'amount' => 10000, // would leave 5000 < 10000 minimum
-        'pin' => '123456',
-    ], ['Authorization' => "Bearer $token"])->assertStatus(400);
+    ], ['Authorization' => "Bearer $token"])->assertUnprocessable()
+        ->assertJsonValidationErrors(['amount']);
 
     expect($customer->fresh()->balance)->toBe(15000);
     expect(Transaction::where('customer_id', $customer->id)->count())->toBe(0);
@@ -318,21 +431,28 @@ test('unauthenticated user cannot perform deposit', function () {
     ])->assertStatus(401);
 });
 
-test('withdrawal exactly at minimum balance boundary succeeds', function () {
+test('withdrawal at minimum balance boundary is applied after customer confirmation', function () {
     [$teller, $token] = tellerWithTokenForTransactionTest();
     $customer = setupCustomerForTransaction();
+    $customerToken = customerTokenForTransactionTest($customer);
     $customer->update(['balance' => 30000]);
 
     // Withdraw 20000, leaving exactly 10000 (minimum)
     $response = $this->postJson('/api/teller/withdrawal', [
         'customer_id' => $customer->id,
         'amount' => 20000,
-        'pin' => '123456',
     ], ['Authorization' => "Bearer $token"]);
 
     $response->assertStatus(200)
-        ->assertJsonPath('message', 'Penarikan berhasil')
-        ->assertJsonPath('balance', 10000);
+        ->assertJsonPath('data.status', 'pending')
+        ->assertJsonPath('balance', 30000);
+
+    $transaction = Transaction::where('customer_id', $customer->id)->firstOrFail();
+    expect($customer->fresh()->balance)->toBe(30000);
+
+    confirmTransactionForCustomer($this, $customerToken, $transaction->id)
+        ->assertOk()
+        ->assertJsonPath('data.balance', 10000);
 
     expect($customer->fresh()->balance)->toBe(10000);
 });

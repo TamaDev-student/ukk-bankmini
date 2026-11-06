@@ -91,9 +91,7 @@ export function AuthProvider({ children }) {
                 throw new Error('Server tidak mengembalikan informasi pengguna.');
             }
             setUser(authenticatedUser);
-            
             return authenticatedUser;
-            
         } catch (error) {
             const status = error.response?.status;
             if (status === 401 || status === 403) {

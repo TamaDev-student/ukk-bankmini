@@ -5,7 +5,7 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Laravel\Sanctum\TransientToken;
+use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -23,6 +23,11 @@ class EnsureAccountIsActive
         $user = $request->user();
 
         if ($user && $user->status !== 'active') {
+            $accessToken = $user->currentAccessToken();
+            if ($accessToken instanceof PersonalAccessToken) {
+                $accessToken->delete();
+            }
+
             // Invalidate session for web guard only when session is present
             if ($request->hasSession()) {
                 Auth::guard('web')->logout();

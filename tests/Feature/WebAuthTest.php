@@ -441,6 +441,7 @@ test('blocked user with bearer token is rejected with 403 and token is deleted w
     ]);
 
     $token = $user->createToken('mobile_token')->plainTextToken;
+    $otherToken = $user->createToken('other_mobile_token')->plainTextToken;
 
     // Admin blocks the user
     $user->update(['status' => 'blocked']);
@@ -455,6 +456,7 @@ test('blocked user with bearer token is rejected with 403 and token is deleted w
 
     // Verify token was deleted from database
     expect(PersonalAccessToken::findToken($token))->toBeNull();
+    expect(PersonalAccessToken::findToken($otherToken))->not->toBeNull();
 
     // Subsequent request with revoked token fails with 401 Unauthenticated
     $this->app['auth']->forgetGuards();
@@ -539,7 +541,7 @@ test('non-teller cannot access teller routes', function () {
     ]);
 
     $response = $this->actingAs($user)
-        ->getJson('/api/teller/customers');
+        ->getJson('/api/teller/customers/TEST001');
 
     $response->assertForbidden();
 });

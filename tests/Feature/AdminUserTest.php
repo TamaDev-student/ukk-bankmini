@@ -197,23 +197,27 @@ test('create user gagal jika password confirmation tidak cocok (422)', function 
         ->assertJsonValidationErrors(['password']);
 });
 
-test('create user gagal jika role tidak valid (422)', function () {
+test('create user gagal jika role di luar daftar resmi (422)', function () {
     [, $token] = adminWithToken();
 
     $payload = [
         'name' => 'Nama Test',
-        'username' => 'usertest_role',
+        'username' => 'usertest_invalid_role',
         'full_name' => 'Nama Test Lengkap',
-        'email' => 'testrole@bank.com',
+        'email' => 'testinvalidrole@bank.com',
         'password' => 'password123',
         'password_confirmation' => 'password123',
-        'role' => 'nasabah',
+        'role' => 'owner',
     ];
 
     $this->withToken($token)
         ->postJson('/api/admin/users', $payload)
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['role']);
+
+    $this->assertDatabaseMissing('users', [
+        'username' => 'usertest_invalid_role',
+    ]);
 });
 
 test('create user gagal jika semua field wajib kosong (422)', function () {

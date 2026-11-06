@@ -5,11 +5,9 @@ import {
     Eye,
     EyeOff,
     LoaderCircle,
-    ShieldCheck,
     CircleAlert,
     CheckCircle2,
     ArrowLeft,
-    KeyRound,
     Mail,
     RefreshCw,
 } from "lucide-react";
