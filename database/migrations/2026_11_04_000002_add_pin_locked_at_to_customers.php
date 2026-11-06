@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('customers', function (Blueprint $table) {
-            $table->timestamp('pin_locked_at')->nullable()->after('must_change_pin');
+            $table->timestamp('pin_locked_at')->nullable()->after('security_pin');
         });
     }
 
