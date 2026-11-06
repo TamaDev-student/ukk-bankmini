@@ -4,7 +4,8 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     /**
      * Run the migrations.
      */
@@ -13,8 +14,8 @@ return new class extends Migration {
         Schema::table('users', function (Blueprint $table) {
             $table->string('username', 50)->unique()->after('name');
             $table->string('full_name', 100)->after('username');
-            $table->enum('role', ['administrator', 'teller', 'supervisor',])->after('full_name');
-            $table->enum('status', ['active', 'blocked',])->default('active')->after('role');
+            $table->enum('role', ['administrator', 'teller', 'supervisor', 'nasabah'])->after('full_name');
+            $table->enum('status', ['active', 'blocked'])->default('active')->after('role');
 
         });
     }

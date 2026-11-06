@@ -16,16 +16,16 @@ return new class extends Migration
 
             $table->foreignId('customer_id')->constrained('customers')->restrictOnDelete();
             $table->foreignId('user_id')->constrained('users')->restrictOnDelete();
-            
-            $table->dateTime('transaction_date'); //tanggal transaksi
 
-            $table->enum('transaction_type', [ //tipe transaksi
+            $table->dateTime('transaction_date'); // tanggal transaksi
+
+            $table->enum('transaction_type', [ // tipe transaksi
                 'deposit',
                 'withdrawal',
             ])->comment('tipe transaksi');
 
-            $table->unsignedBigInteger('amount'); //jumlah transaksi
-            
+            $table->unsignedBigInteger('amount'); // jumlah transaksi
+
             $table->timestamps();
         });
     }

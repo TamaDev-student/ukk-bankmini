@@ -7,14 +7,15 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
-use Illuminate\Database\Eloquent\Relations\HasMany; //relasi one to many
 use Laravel\Fortify\Contracts\PasskeyUser;
 use Laravel\Fortify\PasskeyAuthenticatable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
-use Laravel\Sanctum\HasApiTokens; //api sanctum untuk autentikasi token
+use Laravel\Sanctum\HasApiTokens;
 
 /**
  * @property int $id
@@ -29,17 +30,30 @@ use Laravel\Sanctum\HasApiTokens; //api sanctum untuk autentikasi token
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'username', 'full_name', 'role', 'email', 'password'])]
-#[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
+#[Fillable([
+    'name',
+    'username',
+    'full_name',
+    'role',
+    'status',
+    'email',
+    'password',
+])]
+#[Hidden([
+    'password',
+    'two_factor_secret',
+    'two_factor_recovery_codes',
+    'remember_token',
+    'temporary_password_expires_at',
+])]
 class User extends Authenticatable implements PasskeyUser
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
-    use HasApiTokens, Notifiable; //API token untuk autentikasi
+    use HasApiTokens, HasFactory, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
 
     public function transactions(): HasMany
     {
-        return $this->HasMany(Transaction::class); //user khusus teller dapat melakukan banyak transaksi
+        return $this->hasMany(Transaction::class); // user khusus teller dapat melakukan banyak transaksi
     }
 
     /**
@@ -52,8 +66,24 @@ class User extends Authenticatable implements PasskeyUser
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'must_change_password' => 'boolean',
+            'temporary_password_expires_at' => 'datetime',
             'two_factor_confirmed_at' => 'datetime',
         ];
     }
 
+    public function customer(): HasOne
+    {
+        return $this->hasOne(Customer::class);
+    }
+
+    public function passwordResetOtps(): HasMany
+    {
+        return $this->hasMany(PasswordResetOtp::class);
+    }
+
+    public function recoveryEmailChallenges(): HasMany
+    {
+        return $this->hasMany(CustomerRecoveryEmailChallenge::class);
+    }
 }

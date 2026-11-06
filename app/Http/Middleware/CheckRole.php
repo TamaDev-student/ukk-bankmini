@@ -10,17 +10,18 @@ class CheckRole
 {
     public function handle(Request $request, Closure $next, ...$roles): Response
     {
-        if (!$request->user()) {
+        if (! $request->user()) {
             return response()->json([
-                'message' => 'Unauthenticated.'
+                'message' => 'Unauthenticated.',
             ], 401);
         }
 
-        if (!in_array($request->user()->role, $roles)) {
+        if (! in_array($request->user()->role, $roles, true)) {
             return response()->json([
-                'message' => 'Akses ditolak.'
+                'message' => 'Akses ditolak.',
             ], 403);
         }
+
         return $next($request);
     }
 }

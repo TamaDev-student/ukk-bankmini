@@ -14,9 +14,9 @@ return new class extends Migration
         Schema::create('customers', function (Blueprint $table) {
             $table->id();
 
-            $table->string('account_number', 30)->unique(); //nomor rekening
-            $table->string('student_number', 30)->unique(); //NIS
-            
+            $table->string('account_number', 30)->unique(); // nomor rekening
+            $table->string('student_number', 30)->unique(); // NIS
+
             $table->string('student_name', 100);
             $table->string('class', 20);
 
@@ -24,8 +24,8 @@ return new class extends Migration
                 'active',
                 'blocked',
             ])->default('active');
-            
-            $table->string('security_pin', 255); //PIN
+
+            $table->string('security_pin', 255); // PIN
             $table->unsignedBigInteger('balance')->default(0);
             $table->timestamps();
         });

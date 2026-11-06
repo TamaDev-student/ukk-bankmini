@@ -63,12 +63,16 @@ Sistem telah dinormalisasi hingga tahap ke-3 (3NF) dengan penamaan tabel Bahasa 
 
 ---
 
-## 🚀 Alur Kerja Penutupan Kas Harian (Formula)
+## 🚀 Alur Rekonsiliasi dan Penutupan Kas Harian
 
-Sistem akan mengkalkulasi saldo secara otomatis pada akhir jam operasional dengan rumus mutlak:
-> **Saldo Awal + Total Setoran − Total Penarikan = Saldo Akhir Kas**
+Backend menghitung saldo kas sistem dari saldo sistem laporan sebelumnya yang telah disetujui (atau konfigurasi awal pada hari operasional pertama), lalu menambahkan setoran berhasil dan mengurangi penarikan berhasil:
+> **Saldo Awal Sistem + Total Setoran Berhasil − Total Penarikan Berhasil = Saldo Akhir Sistem**
 
-Laporan hanya bisa disubmit menjadi **Draf** jika *input* uang fisik di laci Teller cocok dengan hitungan digital sistem.
+Transaksi pending dan gagal/ditolak dicatat terpisah dan tidak memengaruhi saldo sistem. Teller memasukkan kas fisik awal dan akhir; backend menyimpan selisih masing-masing tanpa mengubah saldo sistem. Pengiriman Teller menghasilkan status menunggu persetujuan, sedangkan persetujuan hanya dapat dilakukan Supervisor.
+
+Pada operasional pertama, Teller mencatat saldo sistem sesuai modal yang benar-benar diterima. Nilai ini wajib diisi sebelum transaksi dimulai dan tidak dapat diubah oleh Teller setelah disimpan. Koreksi hanya dapat dilakukan Supervisor sebelum transaksi dimulai, dengan alasan dan riwayat audit.
+
+Penutupan otomatis memakai konfigurasi server `BANK_CASH_CLOSE_TIME` (default operasional proyek `23:59`, zona `Asia/Jakarta`). Penutupan ini mencatat saldo sistem dan snapshot transaksi tanpa mengarang kas fisik atau selisih akhir, dengan status `auto_closed_unverified`. Agar jadwal berjalan, lingkungan produksi harus menjalankan Laravel Scheduler setiap menit (`php artisan schedule:run` dari cron atau layanan scheduler).
 
 ---
 *Dibuat untuk memenuhi spesifikasi ketat Uji Kompetensi Keahlian (UKK) Rekayasa Perangkat Lunak 2026/2027.*

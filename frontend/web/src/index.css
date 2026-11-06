@@ -1,0 +1,235 @@
+@import "tailwindcss";
+
+@theme {
+  /* ── Colors (MD3 Token System) ── */
+  --color-on-error-container: #93000a;
+  --color-on-surface: #131b2e;
+  --color-primary: #003fb3;
+  --color-inverse-primary: #b5c4ff;
+  --color-on-secondary-container: #57657a;
+  --color-surface: #faf8ff;
+  --color-secondary-container: #d5e3fc;
+  --color-on-background: #131b2e;
+  --color-tertiary-fixed: #6ffbbe;
+  --color-surface-bright: #faf8ff;
+  --color-on-tertiary-fixed: #002113;
+  --color-on-secondary-fixed-variant: #3a485b;
+  --color-on-primary-fixed: #00164d;
+  --color-on-tertiary-fixed-variant: #005236;
+  --color-on-primary-container: #d5dcff;
+  --color-surface-tint: #1f54d3;
+  --color-secondary: #515f74;
+  --color-inverse-on-surface: #eef0ff;
+  --color-outline-variant: #c3c5d7;
+  --color-outline: #747686;
+  --color-surface-container-high: #e2e7ff;
+  --color-surface-dim: #d2d9f4;
+  --color-inverse-surface: #283044;
+  --color-surface-container-lowest: #ffffff;
+  --color-on-tertiary: #ffffff;
+  --color-on-secondary: #ffffff;
+  --color-tertiary-container: #00704c;
+  --color-primary-container: #2457d6;
+  --color-error-container: #ffdad6;
+  --color-error: #ba1a1a;
+  --color-background: #faf8ff;
+  --color-surface-container: #eaedff;
+  --color-tertiary: #005539;
+  --color-primary-fixed: #dce1ff;
+  --color-tertiary-fixed-dim: #4edea3;
+  --color-secondary-fixed-dim: #b9c7df;
+  --color-on-secondary-fixed: #0d1c2e;
+  --color-secondary-fixed: #d5e3fc;
+  --color-on-error: #ffffff;
+  --color-on-surface-variant: #434654;
+  --color-on-primary-fixed-variant: #003cad;
+  --color-surface-variant: #dae2fd;
+  --color-on-tertiary-container: #6af7b9;
+  --color-surface-container-highest: #dae2fd;
+  --color-on-primary: #ffffff;
+  --color-surface-container-low: #f2f3ff;
+  --color-primary-fixed-dim: #b5c4ff;
+
+  /* ── Spacing ── */
+  --spacing-space-xl: 2rem;
+  --spacing-space-sm: 0.5rem;
+  --spacing-margin-desktop: 2rem;
+  --spacing-space-lg: 1.5rem;
+  --spacing-margin: 1rem;
+  --spacing-gutter: 1rem;
+  --spacing-space-md: 1rem;
+  --spacing-gutter-desktop: 1.5rem;
+  --spacing-space-xs: 0.25rem;
+
+  /* ── Border Radius ── */
+  --radius: 0.125rem;
+  --radius-lg: 0.25rem;
+  --radius-xl: 0.5rem;
+  --radius-full: 0.75rem;
+
+  /* ── Font Family ── */
+  --font-body-md: "Inter", sans-serif;
+  --font-label-md: "Inter", sans-serif;
+  --font-headline-md: "Inter", sans-serif;
+  --font-headline-sm: "Inter", sans-serif;
+  --font-body-sm: "Inter", sans-serif;
+  --font-label-sm: "Inter", sans-serif;
+  --font-body-lg: "Inter", sans-serif;
+  --font-headline-lg: "Inter", sans-serif;
+  --font-mono-num: "Inter", sans-serif;
+  --font-title-sm: "Inter", sans-serif;
+  --font-title-md: "Inter", sans-serif;
+  --font-label-lg: "Inter", sans-serif;
+  --font-numeric-display: "Inter", sans-serif;
+
+  /* ── Font Size (with line-height) ── */
+  --text-body-md: 14px;
+  --text-body-md--line-height: 20px;
+  --text-label-md: 13px;
+  --text-label-md--line-height: 18px;
+  --text-headline-md: 20px;
+  --text-headline-md--line-height: 28px;
+  --text-headline-sm: 16px;
+  --text-headline-sm--line-height: 24px;
+  --text-body-sm: 13px;
+  --text-body-sm--line-height: 18px;
+  --text-label-sm: 11px;
+  --text-label-sm--line-height: 16px;
+  --text-body-lg: 15px;
+  --text-body-lg--line-height: 22px;
+  --text-headline-lg: 24px;
+  --text-headline-lg--line-height: 32px;
+  --text-mono-num: 14px;
+  --text-mono-num--line-height: 20px;
+  --text-title-sm: 14px;
+  --text-title-sm--line-height: 20px;
+  --text-title-md: 16px;
+  --text-title-md--line-height: 22px;
+  --text-label-lg: 14px;
+  --text-label-lg--line-height: 18px;
+  --text-numeric-display: 24px;
+  --text-numeric-display--line-height: 30px;
+}
+
+/* ── Base Resets ── */
+@layer base {
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    overscroll-behavior: none;
+    font-family: "Inter", sans-serif;
+  }
+
+  main> :first-child {
+    margin-top: 0 !important;
+  }
+
+  main> :last-child {
+    margin-bottom: 0 !important;
+  }
+
+  /* Hide scrollbar (match source design) */
+  ::-webkit-scrollbar {
+    display: none;
+  }
+
+  * {
+    scrollbar-width: none;
+  }
+
+  .overflow-x-auto {
+    scrollbar-width: thin;
+    scrollbar-color: #94a3b8 #f1f5f9;
+  }
+
+  .overflow-x-auto::-webkit-scrollbar {
+    display: block;
+    height: 8px;
+  }
+
+  .overflow-x-auto::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background: #94a3b8;
+  }
+
+  .overflow-x-auto::-webkit-scrollbar-track {
+    background: #f1f5f9;
+  }
+
+  /* Reset #root from Vite defaults */
+  #root {
+    width: auto;
+    max-width: none;
+    margin: 0;
+    text-align: left;
+    border: none;
+    min-height: auto;
+    display: block;
+  }
+}
+
+/*
+ * Additional font-weight utilities that Tailwind v4 @theme doesn't auto-generate.
+ * These match the exact fontWeight values from the source HTML's tailwind config.
+ */
+@utility font-w-body-md {
+  font-weight: 400;
+}
+
+@utility font-w-label-md {
+  font-weight: 500;
+}
+
+@utility font-w-headline-md {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+@utility font-w-headline-sm {
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+@utility font-w-body-sm {
+  font-weight: 400;
+}
+
+@utility font-w-label-sm {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+@utility font-w-body-lg {
+  font-weight: 400;
+}
+
+@utility font-w-headline-lg {
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+@utility font-w-mono-num {
+  font-weight: 500;
+}
+
+@utility font-w-title-sm {
+  font-weight: 600;
+}
+
+@utility font-w-title-md {
+  font-weight: 600;
+}
+
+@utility font-w-label-lg {
+  font-weight: 500;
+}
+
+@utility font-w-numeric-display {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
