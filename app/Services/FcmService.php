@@ -4,23 +4,36 @@ namespace App\Services;
 
 use App\Models\FcmDeviceToken;
 use App\Models\User;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class FcmService
 {
+    private const OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+
+    private const FCM_SCOPE =
+        'https://www.googleapis.com/auth/firebase.messaging';
+
+    private const FCM_BASE_URL =
+        'https://fcm.googleapis.com/v1/projects/';
+
     /**
-     * Mendaftarkan atau memperbarui FCM Device Token untuk User.
+     * Mendaftarkan atau memperbarui FCM device token milik User.
      */
-    public function registerToken(User $user, string $token, ?string $deviceType = 'android'): void
-    {
+    public function registerToken(
+        User $user,
+        string $token,
+        ?string $deviceType = 'android'
+    ): void {
         $token = trim($token);
-        if (empty($token)) {
+
+        if ($token === '') {
             return;
         }
 
-        // Pastikan token/FID ini tidak tertaut pada user lain jika perangkat pernah dipakai akun lain
+        // Satu token perangkat hanya boleh terkait dengan satu user.
         FcmDeviceToken::where('token', $token)
             ->where('user_id', '!=', $user->id)
             ->delete();
@@ -32,19 +45,22 @@ class FcmService
             ],
             [
                 'device_type' => $deviceType ?? 'android',
-                'updated_at' => now(),
             ]
         );
     }
 
     /**
-     * Menghapus token perangkat tertentu saat logout.
+     * Menghapus token perangkat milik User saat logout.
+     *
+     * Jika token tidak diberikan, seluruh token milik User dihapus.
      */
-    public function removeToken(User $user, ?string $token = null): void
-    {
+    public function removeToken(
+        User $user,
+        ?string $token = null
+    ): void {
         $query = FcmDeviceToken::where('user_id', $user->id);
 
-        if (!empty($token)) {
+        if ($token !== null && trim($token) !== '') {
             $query->where('token', trim($token));
         }
 
@@ -52,30 +68,41 @@ class FcmService
     }
 
     /**
-     * Mengirimkan notifikasi push ke seluruh perangkat milik User.
+     * Mengirim notifikasi ke seluruh perangkat milik User.
+     *
+     * Mengembalikan true jika minimal satu pengiriman berhasil.
      */
-    public function sendToUser(?User $user, string $title, string $body, array $data = []): bool
-    {
+    public function sendToUser(
+        ?User $user,
+        string $title,
+        string $body,
+        array $data = []
+    ): bool {
         if (!$user) {
             return false;
         }
 
         $tokens = FcmDeviceToken::where('user_id', $user->id)
+            ->whereNotNull('token')
             ->pluck('token')
-            ->filter()
+            ->filter(
+                fn ($token) => is_string($token) && trim($token) !== ''
+            )
             ->unique()
             ->values();
 
         if ($tokens->isEmpty()) {
-            Log::info("[FCM] User {$user->id} ({$user->username}) tidak memiliki device token terdaftar.");
+            Log::info(
+                "[FCM] Tidak ada device token terdaftar untuk user ID {$user->id}."
+            );
+
             return false;
         }
 
         $success = false;
 
         foreach ($tokens as $token) {
-            $sent = $this->sendToToken($token, $title, $body, $data);
-            if ($sent) {
+            if ($this->sendToToken($token, $title, $body, $data)) {
                 $success = true;
             }
         }
@@ -84,34 +111,70 @@ class FcmService
     }
 
     /**
-     * Mengirim notifikasi ke token FCM tertentu.
+     * Mengirim notifikasi ke satu token menggunakan FCM HTTP v1.
      */
-    public function sendToToken(string $token, string $title, string $body, array $data = []): bool
-    {
-        $credentialsPath = config('services.firebase.credentials') ?: env('FIREBASE_CREDENTIALS');
-        $serverKey = config('services.firebase.server_key') ?: env('FCM_SERVER_KEY');
-        $projectId = config('services.firebase.project_id') ?: env('FIREBASE_PROJECT_ID', 'e-teller-bank-mini');
+    public function sendToToken(
+        string $token,
+        string $title,
+        string $body,
+        array $data = []
+    ): bool {
+        $token = trim($token);
 
-        // Pastikan tidak ada kredensial sensitif atau secret di log
-        $payloadData = array_map('strval', $data);
+        if ($token === '') {
+            Log::warning('[FCM] Pengiriman dibatalkan: token kosong.');
 
-        // Kasus 1: Menggunakan Service Account JSON (FCM HTTP v1 API)
-        if ($credentialsPath && file_exists($credentialsPath)) {
-            return $this->sendViaHttpV1($credentialsPath, $projectId, $token, $title, $body, $payloadData);
+            return false;
         }
 
-        // Kasus 2: Menggunakan Server Key / Legacy FCM API jika dikonfigurasi
-        if ($serverKey) {
-            return $this->sendViaLegacyApi($serverKey, $token, $title, $body, $payloadData);
+        $credentialsPath = config('services.firebase.credentials');
+
+        $projectId = config('services.firebase.project_id');
+
+        if (
+            !is_string($credentialsPath)
+            || trim($credentialsPath) === ''
+        ) {
+            Log::error(
+                '[FCM] FIREBASE_CREDENTIALS belum dikonfigurasi.'
+            );
+
+            return false;
         }
 
-        // Kasus 3: Kredensial belum dikonfigurasi di lingkungan ini (safe no-op)
-        Log::info("[FCM] Pengiriman notifikasi push dilewati (Kredensial Firebase belum dikonfigurasi pada FIREBASE_CREDENTIALS): [{$title}] {$body}");
-        return false;
+        if (
+            !is_string($projectId)
+            || trim($projectId) === ''
+        ) {
+            Log::error(
+                '[FCM] FIREBASE_PROJECT_ID belum dikonfigurasi.'
+            );
+
+            return false;
+        }
+
+        if (!is_file($credentialsPath) || !is_readable($credentialsPath)) {
+            Log::error(
+                '[FCM] File kredensial tidak ditemukan atau tidak dapat dibaca.'
+            );
+
+            return false;
+        }
+
+        $payloadData = $this->normalizeData($data);
+
+        return $this->sendViaHttpV1(
+            $credentialsPath,
+            $projectId,
+            $token,
+            $title,
+            $body,
+            $payloadData
+        );
     }
 
     /**
-     * Mengirim pesan menggunakan Firebase HTTP v1 API dengan Service Account JSON.
+     * Mengirim pesan menggunakan Firebase Cloud Messaging HTTP v1 API.
      */
     protected function sendViaHttpV1(
         string $credentialsPath,
@@ -122,26 +185,59 @@ class FcmService
         array $data
     ): bool {
         try {
-            $accessToken = $this->getOAuth2AccessToken($credentialsPath);
-            if (!$accessToken) {
-                Log::warning("[FCM v1] Gagal memperoleh OAuth2 access token dari service account.");
+            $credentials = $this->loadCredentials($credentialsPath);
+
+            if ($credentials === null) {
+                Log::error(
+                    '[FCM v1] File service account tidak valid.'
+                );
+
                 return false;
             }
 
-            $url = "https://fcm.googleapis.com/v1/projects/{$projectId}/messages:send";
+            // Pastikan service account berasal dari proyek yang sesuai.
+            if (($credentials['project_id'] ?? null) !== $projectId) {
+                Log::error(
+                    '[FCM v1] Project ID pada kredensial tidak sesuai dengan konfigurasi.'
+                );
+
+                return false;
+            }
+
+            $accessToken = $this->getOAuth2AccessToken($credentials);
+
+            if ($accessToken === null) {
+                Log::error(
+                    '[FCM v1] Gagal memperoleh OAuth2 access token.'
+                );
+
+                return false;
+            }
+
+            $url = self::FCM_BASE_URL
+                . rawurlencode($projectId)
+                . '/messages:send';
 
             $response = Http::withToken($accessToken)
-                ->timeout(10)
+                ->acceptJson()
+                ->asJson()
+                ->connectTimeout(5)
+                ->timeout(15)
                 ->post($url, [
                     'message' => [
-                        'fid' => $token,
+                        // Field tujuan FCM HTTP v1 yang benar.
+                        'token' => $token,
+
                         'notification' => [
                             'title' => $title,
                             'body' => $body,
                         ],
+
                         'data' => $data,
+
                         'android' => [
                             'priority' => 'HIGH',
+
                             'notification' => [
                                 'channel_id' => 'transaction_approval',
                                 'icon' => 'ic_stat_bank_mini',
@@ -152,107 +248,301 @@ class FcmService
                 ]);
 
             if ($response->successful()) {
+                Log::info(
+                    '[FCM v1] Permintaan pengiriman notifikasi berhasil diterima Firebase.'
+                );
+
                 return true;
             }
 
-            // Tangani token tidak valid / unregistered
             $status = $response->status();
             $errorBody = $response->json();
-            $errorCode = $errorBody['error']['details'][0]['errorCode'] ?? null;
 
-            if ($status === 404 || $errorCode === 'UNREGISTERED') {
-                FcmDeviceToken::where('token', $token)->delete();
-                Log::info("[FCM v1] Token tidak aktif/unregistered dihapus: " . substr($token, 0, 15) . "...");
-            } else {
-                Log::warning("[FCM v1] Respons gagal ({$status}): " . ($errorBody['error']['message'] ?? 'Unknown error'));
-            }
+            $errorMessage = data_get(
+                $errorBody,
+                'error.message',
+                'Unknown Firebase error'
+            );
 
-            return false;
-        } catch (Throwable $e) {
-            Log::error("[FCM v1] Exception saat pengiriman: " . $e->getMessage());
-            return false;
-        }
-    }
+            $errorStatus = data_get(
+                $errorBody,
+                'error.status',
+                ''
+            );
 
-    /**
-     * Mengirim notifikasi menggunakan FCM legacy endpoint.
-     */
-    protected function sendViaLegacyApi(
-        string $serverKey,
-        string $token,
-        string $title,
-        string $body,
-        array $data
-    ): bool {
-        try {
-            $response = Http::withHeaders([
-                'Authorization' => 'key=' . $serverKey,
-                'Content-Type' => 'application/json',
-            ])->timeout(10)->post('https://fcm.googleapis.com/fcm/send', [
-                'to' => $token,
-                'notification' => [
-                    'title' => $title,
-                    'body' => $body,
-                    'icon' => 'ic_stat_bank_mini',
-                    'sound' => 'default',
-                ],
-                'data' => $data,
-                'priority' => 'high',
-            ]);
+            // FCM dapat memberikan errorCode melalui error details.
+            $details = data_get(
+                $errorBody,
+                'error.details',
+                []
+            );
 
-            if ($response->successful()) {
-                $result = $response->json();
-                if (!empty($result['failure']) && !empty($result['results'][0]['error'])) {
-                    $error = $result['results'][0]['error'];
-                    if (in_array($error, ['NotRegistered', 'InvalidRegistration'])) {
-                        FcmDeviceToken::where('token', $token)->delete();
+            $errorCodes = [];
+
+            if (is_array($details)) {
+                foreach ($details as $detail) {
+                    if (isset($detail['errorCode'])) {
+                        $errorCodes[] = $detail['errorCode'];
                     }
-                    return false;
                 }
-                return true;
             }
+
+            // Hapus token hanya jika Firebase menyatakan token tidak
+            // terdaftar. Jangan menghapus token hanya karena HTTP 404.
+            if (
+                in_array('UNREGISTERED', $errorCodes, true)
+                || $errorStatus === 'UNREGISTERED'
+            ) {
+                FcmDeviceToken::where('token', $token)->delete();
+
+                Log::warning(
+                    '[FCM v1] Token perangkat tidak terdaftar lagi dan telah dihapus.'
+                );
+
+                return false;
+            }
+
+            Log::warning(
+                "[FCM v1] Pengiriman gagal. HTTP {$status}; "
+                . "status={$errorStatus}; pesan={$errorMessage}"
+            );
+
+            return false;
+        } catch (ConnectionException $e) {
+            Log::error(
+                '[FCM v1] Koneksi ke layanan Firebase gagal atau timeout.'
+            );
 
             return false;
         } catch (Throwable $e) {
-            Log::error("[FCM Legacy] Exception: " . $e->getMessage());
+            // Jangan mencatat isi kredensial atau token perangkat.
+            Log::error(
+                '[FCM v1] Terjadi kesalahan internal: '
+                . get_class($e)
+            );
+
             return false;
         }
     }
 
     /**
-     * Membaca Service Account JSON dan menghasilkan Google OAuth2 Access Token.
+     * Membaca dan memvalidasi service account JSON.
      */
-    protected function getOAuth2AccessToken(string $credentialsPath): ?string
+    protected function loadCredentials(string $credentialsPath): ?array
     {
         try {
-            $json = json_decode(file_get_contents($credentialsPath), true);
-            if (!$json || empty($json['client_email']) || empty($json['private_key'])) {
+            $contents = file_get_contents($credentialsPath);
+
+            if ($contents === false || trim($contents) === '') {
+                return null;
+            }
+
+            $credentials = json_decode(
+                $contents,
+                true,
+                512,
+                JSON_THROW_ON_ERROR
+            );
+
+            if (!is_array($credentials)) {
+                return null;
+            }
+
+            if (($credentials['type'] ?? null) !== 'service_account') {
+                return null;
+            }
+
+            if (
+                empty($credentials['project_id'])
+                || empty($credentials['client_email'])
+                || empty($credentials['private_key'])
+                || empty($credentials['token_uri'])
+            ) {
+                return null;
+            }
+
+            if (
+                !filter_var(
+                    $credentials['client_email'],
+                    FILTER_VALIDATE_EMAIL
+                )
+            ) {
+                return null;
+            }
+
+            // Gunakan hanya endpoint token Google yang diharapkan.
+            if (
+                $credentials['token_uri'] !== self::OAUTH_TOKEN_URL
+            ) {
+                return null;
+            }
+
+            return $credentials;
+        } catch (Throwable $e) {
+            Log::error(
+                '[FCM] Kredensial JSON tidak dapat dibaca atau divalidasi.'
+            );
+
+            return null;
+        }
+    }
+
+    /**
+     * Menghasilkan Google OAuth2 access token dari service account.
+     *
+     * JWT harus menggunakan Base64 URL-safe, bukan Base64 standar.
+     */
+    protected function getOAuth2AccessToken(
+        array $credentials
+    ): ?string {
+        $privateKeyResource = null;
+
+        try {
+            $privateKeyResource = openssl_pkey_get_private(
+                $credentials['private_key']
+            );
+
+            if ($privateKeyResource === false) {
+                Log::error(
+                    '[FCM OAuth2] Private key tidak dapat dibaca oleh OpenSSL.'
+                );
+
                 return null;
             }
 
             $now = time();
-            $header = base64_encode(json_encode(['alg' => 'RS256', 'typ' => 'JWT']));
-            $claimSet = base64_encode(json_encode([
-                'iss' => $json['client_email'],
-                'scope' => 'https://www.googleapis.com/auth/firebase.messaging',
-                'aud' => 'https://oauth2.googleapis.com/token',
-                'exp' => $now + 3600,
+
+            $header = [
+                'alg' => 'RS256',
+                'typ' => 'JWT',
+            ];
+
+            $claims = [
+                'iss' => $credentials['client_email'],
+                'scope' => self::FCM_SCOPE,
+                'aud' => self::OAUTH_TOKEN_URL,
                 'iat' => $now,
-            ]));
+                'exp' => $now + 3600,
+            ];
 
-            $signatureInput = $header . '.' . $claimSet;
-            openssl_sign($signatureInput, $signature, $json['private_key'], 'sha256WithRSAEncryption');
-            $jwt = $signatureInput . '.' . base64_encode($signature);
+            $encodedHeader = $this->base64UrlEncode(
+                json_encode($header, JSON_THROW_ON_ERROR)
+            );
 
-            $response = Http::asForm()->post('https://oauth2.googleapis.com/token', [
-                'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-                'assertion' => $jwt,
-            ]);
+            $encodedClaims = $this->base64UrlEncode(
+                json_encode($claims, JSON_THROW_ON_ERROR)
+            );
 
-            return $response->json('access_token');
-        } catch (Throwable $e) {
-            Log::error("[FCM OAuth2] Error generate access token: " . $e->getMessage());
+            $signatureInput = $encodedHeader . '.' . $encodedClaims;
+
+            $signed = openssl_sign(
+                $signatureInput,
+                $signature,
+                $privateKeyResource,
+                OPENSSL_ALGO_SHA256
+            );
+
+            if (!$signed) {
+                Log::error(
+                    '[FCM OAuth2] Gagal menandatangani JWT.'
+                );
+
+                return null;
+            }
+
+            $jwt = $signatureInput . '.' . $this->base64UrlEncode(
+                $signature
+            );
+
+            $response = Http::asForm()
+                ->acceptJson()
+                ->connectTimeout(5)
+                ->timeout(15)
+                ->post(self::OAUTH_TOKEN_URL, [
+                    'grant_type' =>
+                        'urn:ietf:params:oauth:grant-type:jwt-bearer',
+
+                    'assertion' => $jwt,
+                ]);
+
+            if (!$response->successful()) {
+                Log::warning(
+                    '[FCM OAuth2] Google menolak permintaan token. HTTP '
+                    . $response->status()
+                    . '; status='
+                    . $response->json('error', 'unknown_error')
+                );
+
+                return null;
+            }
+
+            $accessToken = $response->json('access_token');
+
+            if (
+                !is_string($accessToken)
+                || trim($accessToken) === ''
+            ) {
+                Log::warning(
+                    '[FCM OAuth2] Respons Google tidak berisi access token yang valid.'
+                );
+
+                return null;
+            }
+
+            return $accessToken;
+        } catch (ConnectionException $e) {
+            Log::error(
+                '[FCM OAuth2] Koneksi ke layanan OAuth Google gagal atau timeout.'
+            );
+
             return null;
+        } catch (Throwable $e) {
+            Log::error(
+                '[FCM OAuth2] Terjadi kesalahan internal: '
+                . get_class($e)
+            );
+
+            return null;
+        } finally {
+            if ($privateKeyResource !== null && $privateKeyResource !== false) {
+                openssl_pkey_free($privateKeyResource);
+            }
         }
+    }
+
+    /**
+     * Mengubah data tambahan menjadi pasangan string.
+     *
+     * FCM HTTP v1 mengharuskan nilai data berupa string.
+     * Nilai array, object, dan resource tidak dikirim.
+     */
+    protected function normalizeData(array $data): array
+    {
+        $normalized = [];
+
+        foreach ($data as $key => $value) {
+            if (!is_string($key) || $key === '') {
+                continue;
+            }
+
+            if (!is_scalar($value)) {
+                continue;
+            }
+
+            $normalized[$key] = (string) $value;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Mengodekan data menggunakan Base64 URL-safe untuk JWT.
+     */
+    protected function base64UrlEncode(string $value): string
+    {
+        return rtrim(
+            strtr(base64_encode($value), '+/', '-_'),
+            '='
+        );
     }
 }
