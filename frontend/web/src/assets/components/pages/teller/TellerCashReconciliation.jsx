@@ -298,7 +298,10 @@ export default function TellerCashReconciliation() {
             if (initialBalanceRequired) {
                 payload.opening_balance = Number(form.opening_balance);
             }
-            await api.post("/teller/cash-reconciliation/opening", payload);
+            await api.post(
+                "/teller/cash-reconciliation/opening",
+                payload
+            );
             await fetchReconciliation();
             setSuccess("Kas awal berhasil disimpan.");
         } catch (requestError) {
@@ -639,6 +642,16 @@ export default function TellerCashReconciliation() {
                     <StepProgress steps={steps} />
 
                     <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+                        {!isOpeningSaved && (
+                            <div
+                                role="status"
+                                className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
+                            >
+                                Modal awal kas belum dicatat untuk tanggal
+                                operasional ini. Catat saldo awal dan uang
+                                fisik sebelum melayani transaksi.
+                            </div>
+                        )}
                         <SectionHeading
                             title="1. Kas Awal"
                             description="Catat saldo awal sistem dan hitung uang fisik sebelum melayani nasabah."

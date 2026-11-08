@@ -36,12 +36,12 @@ export const navigationConfig = {
         },
         breadcrumb: "Layanan Teller",
         items: [
-            { path: "dashboard", label: "Dasboard", icon: "grid_view" },
+            { path: "dashboard", label: "Dashboard Teller", icon: "grid_view" },
+            { path: "cash-reconciliation", label: "Rekonsiliasi Kas", icon: "account_balance" },
             { path: "find-customer", label: "Identifikasi Nasabah", icon: "person_search" },
             { path: "deposit", label: "Setoran Tunai", icon: "savings" },
             { path: "withdrawal", label: "Penarikan Tunai", icon: "payments" },
             { path: "daily-report", label: "Laporan Harian", icon: "summarize" },
-            { path: "cash-reconciliation", label: "Rekonsiliasi Kas", icon: "account_balance" },
         ],
     },
 
