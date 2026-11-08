@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     AlertCircle,
-    Check,
     CheckCircle2,
     Clock3,
     FileSpreadsheet,
@@ -242,40 +241,6 @@ export default function TellerCashReconciliation() {
         report?.closing_difference,
     ]);
     const needsReview = reviewReasons.length > 0;
-    const openingStatus = !isOpeningSaved
-        ? previousBalanceUnavailable
-            ? "Memerlukan pemeriksaan"
-            : form.opening_physical_balance || form.opening_balance
-            ? "Sedang dikerjakan"
-            : "Belum dimulai"
-        : report.opening_difference !== 0
-          ? "Memerlukan pemeriksaan"
-          : "Selesai";
-    const transactionStatus = isOpeningSaved
-        ? "Selesai"
-        : "Belum dimulai";
-    const closingStatus = isClosingSaved
-        ? Number(report.closing_difference) === 0
-            ? "Selesai"
-            : "Memerlukan pemeriksaan"
-        : isOpeningSaved
-          ? "Sedang dikerjakan"
-          : "Belum dimulai";
-    const sendStatus = isAutoClosed
-        ? "Memerlukan pemeriksaan"
-        : isSubmitted || isApproved
-          ? "Selesai"
-          : isClosingSaved
-            ? "Sedang dikerjakan"
-            : "Belum dimulai";
-
-    const steps = [
-        { label: "Kas Awal", state: openingStatus },
-        { label: "Transaksi Hari Ini", state: transactionStatus },
-        { label: "Hitung Uang Saat Tutup Kas", state: closingStatus },
-        { label: "Kirim Laporan", state: sendStatus },
-    ];
-
     const updateForm = (field, value) => {
         setForm((current) => ({ ...current, [field]: value }));
         setSuccess("");
@@ -499,7 +464,7 @@ export default function TellerCashReconciliation() {
     ];
 
     return (
-        <main className="mx-auto max-w-4xl space-y-4 px-3 pt-6 pb-8 sm:px-0">
+        <main className="mx-auto max-w-5xl space-y-4 px-3 pt-6 pb-8 sm:px-0">
             <header className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-xl font-bold text-slate-900">
@@ -639,80 +604,69 @@ export default function TellerCashReconciliation() {
                 </div>
             ) : reconciliation ? (
                 <>
-                    <StepProgress steps={steps} />
-
                     <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <SectionHeading
+                                title="Pembukaan Kas"
+                                description="Catat modal kas operasional dan hitung uang fisik sebelum melayani nasabah."
+                            />
+                            <StatusPill
+                                label={isOpeningSaved ? "Sudah dibuka" : "Belum dibuka"}
+                                tone={isOpeningSaved ? "success" : "warning"}
+                            />
+                        </div>
                         {!isOpeningSaved && (
                             <div
                                 role="status"
-                                className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
+                                className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
                             >
-                                Modal awal kas belum dicatat untuk tanggal
-                                operasional ini. Catat saldo awal dan uang
-                                fisik sebelum melayani transaksi.
+                                Pembukaan kas untuk tanggal operasional ini belum
+                                dicatat.
                             </div>
                         )}
-                        <SectionHeading
-                            title="1. Kas Awal"
-                            description="Catat saldo awal sistem dan hitung uang fisik sebelum melayani nasabah."
-                        />
-                        {report?.rejection_reason && status === "rejected" && (
-                            <p className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">
-                                Catatan Supervisor: {report.rejection_reason}
-                            </p>
-                        )}
-
                         {isOpeningSaved && !editingOpening ? (
-                            <div className="mt-4 space-y-3">
-                                <SummaryRow
-                                    label="Saldo Awal Sistem"
+                            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                                <SummaryTile
+                                    label="Modal Awal Kas"
                                     value={formatMaybeRupiah(openingBalance)}
-                                    note={
-                                        reconciliation.opening_balance_source_label
-                                    }
+                                    note={reconciliation.opening_balance_source_label}
                                 />
-                                <SummaryRow
+                                <SummaryTile
                                     label="Uang Fisik Saat Pembukaan"
-                                    value={formatMaybeRupiah(
-                                        report.opening_physical_balance
-                                    )}
+                                    value={formatMaybeRupiah(report.opening_physical_balance)}
                                 />
-                                <SummaryRow
+                                <SummaryTile
                                     label="Selisih Uang Awal"
-                                    value={formatSignedRupiah(
-                                        report.opening_difference
-                                    )}
-                                    valueClass={differenceColor(
-                                        report.opening_difference
-                                    )}
-                                    final
+                                    value={formatSignedRupiah(report.opening_difference)}
+                                    valueClass={differenceColor(report.opening_difference)}
+                                    note={differenceStatus(report.opening_difference)}
                                 />
                                 {canEdit && (
                                     <button
                                         type="button"
                                         onClick={() => setEditingOpening(true)}
-                                        className="text-sm font-semibold text-blue-700 hover:text-blue-900"
+                                        className="text-left text-sm font-semibold text-blue-700 hover:text-blue-900 sm:col-span-3"
                                     >
-                                        Ubah uang fisik pembukaan
+                                        Koreksi uang fisik pembukaan
                                     </button>
                                 )}
                             </div>
                         ) : (
                             <form
                                 onSubmit={handleSaveOpening}
-                                className="mt-4 space-y-4"
+                                className="mt-5 space-y-4"
                             >
                                 {hasPreviousClosing ? (
-                                    <SummaryRow
-                                        label="Saldo Awal Sistem"
+                                    <SummaryTile
+                                        label="Modal Awal Kas"
                                         value={formatMaybeRupiah(openingBalance)}
-                                        note={`Sumber: saldo akhir sistem ${formatDate(previousReport.date)}`}
+                                        note={`Mengikuti saldo akhir sistem ${formatDate(previousReport.date)}`}
                                     />
                                 ) : (
                                     <div>
                                         <AmountInput
                                             id="opening-balance"
-                                            label="Saldo Awal Sistem"
+                                            label="Modal Awal Kas"
                                             value={form.opening_balance}
                                             onChange={(value) =>
                                                 updateForm(
@@ -727,10 +681,10 @@ export default function TellerCashReconciliation() {
                                             }
                                         />
                                         <p className="mt-1 text-xs text-slate-500">
-                                            Masukkan jumlah modal kas
-                                            operasional yang benar-benar
-                                            diterima. Setelah disimpan, koreksi
-                                            hanya dapat dilakukan Supervisor.
+                                            Modal kas operasional, bukan saldo
+                                            rekening nasabah. Setelah dicatat,
+                                            nominal sistem hanya dapat dikoreksi
+                                            melalui mekanisme Supervisor.
                                         </p>
                                     </div>
                                 )}
@@ -748,8 +702,8 @@ export default function TellerCashReconciliation() {
                                         disabled={!canEdit || savingOpening}
                                     />
                                     <p className="mt-1 text-xs text-slate-500">
-                                        Masukkan total uang fisik yang telah
-                                        dihitung.
+                                        Hitung uang fisik yang diterima
+                                        sebelum layanan dimulai.
                                     </p>
                                 </div>
                                 {openingBalance !== null &&
@@ -773,7 +727,7 @@ export default function TellerCashReconciliation() {
                                     >
                                         {savingOpening
                                             ? "Menyimpan..."
-                                            : "Simpan Kas Awal"}
+                                            : "Simpan Pembukaan Kas"}
                                     </PrimaryButton>
                                     {editingOpening && (
                                         <button
@@ -793,35 +747,35 @@ export default function TellerCashReconciliation() {
 
                     <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
                         <SectionHeading
-                            title="2. Transaksi Hari Ini"
+                            title="Ringkasan Transaksi Hari Ini"
                             description="Ringkasan uang yang masuk dan keluar selama operasional."
                         />
-                        <div className="mt-4 divide-y divide-slate-100">
-                            <SummaryRow
-                                label="Saldo Awal Sistem"
-                                value={formatMaybeRupiah(openingBalance)}
-                            />
-                            <SummaryRow
+                        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                            <SummaryTile
                                 label="Setoran Berhasil"
-                                value={formatRupiah(summary.total_deposit)}
+                                value={formatRupiah(summary.total_deposit ?? 0)}
                                 valueClass="text-emerald-700"
                             />
-                            <SummaryRow
+                            <SummaryTile
                                 label="Penarikan Berhasil"
-                                value={formatRupiah(summary.total_withdrawal)}
+                                value={formatRupiah(summary.total_withdrawal ?? 0)}
                                 valueClass="text-amber-700"
                             />
-                            <SummaryRow
-                                label="Saldo Seharusnya Menurut Sistem"
+                            <SummaryTile
+                                label="Transaksi Berhasil"
+                                value={summary.total_transactions ?? 0}
+                                note={`${summary.pending_transactions ?? 0} pending · ${summary.failed_transactions ?? 0} gagal`}
+                            />
+                            <SummaryTile
+                                label="Saldo Kas Seharusnya"
                                 value={formatMaybeRupiah(systemBalance)}
-                                final
+                                valueClass="text-blue-800"
                             />
                         </div>
-                        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-                            <span>{summary.total_transactions ?? 0} transaksi berhasil</span>
-                            <span>{summary.pending_transactions ?? 0} pending</span>
-                            <span>{summary.failed_transactions ?? 0} gagal</span>
-                        </div>
+                        <p className="mt-3 text-xs text-slate-500">
+                            Ringkasan berasal dari backend; transaksi pending
+                            dan gagal tidak dihitung sebagai kas berhasil.
+                        </p>
                         <button
                             type="button"
                             aria-expanded={showTransactions}
@@ -841,27 +795,27 @@ export default function TellerCashReconciliation() {
 
                     <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
                         <SectionHeading
-                            title="3. Hitung Uang Saat Tutup Kas"
-                            description="Hitung seluruh uang fisik yang tersisa setelah pelayanan transaksi hari ini selesai."
+                            title="Penutupan Kas"
+                            description="Hitung uang fisik setelah transaksi selesai, lalu kirim laporan untuk diperiksa Supervisor."
                         />
                         {isClosingSaved && !editingClosing ? (
-                            <div className="mt-4 space-y-3">
-                                <SummaryRow
-                                    label="Saldo Seharusnya Menurut Sistem"
+                            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                                <SummaryTile
+                                    label="Saldo Kas Seharusnya"
                                     value={formatMaybeRupiah(systemBalance)}
                                 />
-                                <SummaryRow
+                                <SummaryTile
                                     label="Uang Fisik Saat Tutup Kas"
-                                    value={formatMaybeRupiah(
-                                        report.physical_balance
-                                    )}
+                                    value={formatMaybeRupiah(report.physical_balance)}
                                 />
-                                <DifferencePanel
+                                <SummaryTile
                                     label="Selisih Uang Akhir"
-                                    value={report.closing_difference}
+                                    value={formatSignedRupiah(report.closing_difference)}
+                                    valueClass={differenceColor(report.closing_difference)}
+                                    note={differenceStatus(report.closing_difference)}
                                 />
                                 {report.closing_difference !== 0 && (
-                                    <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+                                    <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 sm:col-span-3">
                                         {report.closing_difference < 0
                                             ? `Peringatan: Uang fisik kurang ${formatRupiah(Math.abs(report.closing_difference))} dibandingkan saldo sistem. Periksa kembali penghitungan dan transaksi.`
                                             : `Peringatan: Uang fisik lebih ${formatRupiah(report.closing_difference)} dibandingkan saldo sistem. Periksa kembali penghitungan dan transaksi.`}
@@ -871,19 +825,19 @@ export default function TellerCashReconciliation() {
                                     <button
                                         type="button"
                                         onClick={() => setEditingClosing(true)}
-                                        className="text-sm font-semibold text-blue-700 hover:text-blue-900"
+                                        className="text-left text-sm font-semibold text-blue-700 hover:text-blue-900 sm:col-span-3"
                                     >
-                                        Ubah hasil penghitungan
+                                        Koreksi uang fisik penutupan
                                     </button>
                                 )}
                             </div>
-                        ) : (
+                        ) : canEdit && isOpeningSaved ? (
                             <form
                                 onSubmit={handleSaveClosing}
-                                className="mt-4 space-y-4"
+                                className="mt-5 space-y-4"
                             >
-                                <SummaryRow
-                                    label="Saldo Seharusnya Menurut Sistem"
+                                <SummaryTile
+                                    label="Saldo Kas Seharusnya"
                                     value={formatMaybeRupiah(systemBalance)}
                                 />
                                 <div>
@@ -942,17 +896,43 @@ export default function TellerCashReconciliation() {
                                     )}
                                 </div>
                             </form>
+                        ) : (
+                            <p
+                                role="status"
+                                className="mt-5 rounded-lg bg-slate-50 p-3 text-sm text-slate-600"
+                            >
+                                {!isOpeningSaved
+                                    ? "Pembukaan kas harus dicatat sebelum penghitungan penutupan dapat dilakukan."
+                                    : isAutoClosed
+                                      ? "Penutupan otomatis tercatat dan tidak dapat diubah dari halaman ini."
+                                      : "Laporan pada tanggal operasional ini tidak dapat diubah."}
+                            </p>
                         )}
-                    </section>
-
-                    <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
-                        <SectionHeading
-                            title="4. Kirim Laporan"
-                            description="Periksa hasil penghitungan sebelum menyelesaikan laporan harian."
-                        />
-                        <div className="mt-4 rounded-lg bg-slate-50 p-4">
+                        <div className="mt-5 border-t border-slate-200 pt-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <h3 className="text-sm font-semibold text-slate-900">
+                                        Status laporan
+                                    </h3>
+                                    <p className="mt-1 text-sm text-slate-600">
+                                        Persetujuan akhir tetap menjadi kewenangan Supervisor.
+                                    </p>
+                                </div>
+                                <StatusPill
+                                    label={statusDisplay[0]}
+                                    tone={
+                                        isApproved
+                                            ? "success"
+                                            : isSubmitted
+                                              ? "info"
+                                              : isAutoClosed || status === "rejected"
+                                                ? "warning"
+                                                : "neutral"
+                                    }
+                                />
+                            </div>
                             {isAutoClosed || isSubmitted || isApproved ? (
-                                <div className="flex items-start gap-3">
+                                <div className="mt-3 flex items-start gap-3 rounded-lg bg-slate-50 p-3">
                                     {isApproved ? (
                                         <CheckCircle2
                                             size={19}
@@ -984,72 +964,34 @@ export default function TellerCashReconciliation() {
                                                   ? "Laporan sudah dikirim dan belum disetujui."
                                                   : "Penutupan otomatis bukan penghitungan kas fisik dan bukan laporan final."}
                                         </p>
+                                        {report?.approver && (
+                                            <p className="mt-1 text-xs text-slate-500">
+                                                Disetujui oleh {report.approver.full_name ?? report.approver.name}
+                                                {report.approved_at
+                                                    ? ` · ${formatDate(report.approved_at.slice(0, 10))}`
+                                                    : ""}
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
                             ) : (
                                 <>
-                                    <div className="space-y-2">
-                                        <SummaryRow
-                                            label="Saldo Awal Sistem"
-                                            value={formatMaybeRupiah(
-                                                openingBalance
-                                            )}
-                                        />
-                                        <SummaryRow
-                                            label="Selisih Uang Awal"
-                                            value={formatSignedRupiah(
-                                                report?.opening_difference
-                                            )}
-                                        />
-                                        <SummaryRow
-                                            label="Setoran Berhasil"
-                                            value={formatRupiah(
-                                                summary.total_deposit
-                                            )}
-                                        />
-                                        <SummaryRow
-                                            label="Penarikan Berhasil"
-                                            value={formatRupiah(
-                                                summary.total_withdrawal
-                                            )}
-                                        />
-                                        <SummaryRow
-                                            label="Saldo Seharusnya Menurut Sistem"
-                                            value={formatMaybeRupiah(
-                                                systemBalance
-                                            )}
-                                        />
-                                        <SummaryRow
-                                            label="Uang Fisik Saat Tutup Kas"
-                                            value={formatMaybeRupiah(
-                                                report?.physical_balance
-                                            )}
-                                        />
-                                        <SummaryRow
-                                            label="Selisih Uang Akhir"
-                                            value={formatSignedRupiah(
-                                                report?.closing_difference
-                                            )}
-                                            final
-                                        />
-                                    </div>
-                                    <p
-                                        className={`mt-3 rounded-lg p-3 text-sm ${
-                                            needsReview
-                                                ? "bg-amber-100 text-amber-900"
-                                                : "bg-emerald-50 text-emerald-800"
-                                        }`}
-                                    >
+                                    {status === "rejected" && report?.rejection_reason && (
+                                        <p className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">
+                                            Catatan Supervisor: {report.rejection_reason}
+                                        </p>
+                                    )}
+                                    <p className={`mt-3 rounded-lg p-3 text-sm ${needsReview ? "bg-amber-50 text-amber-900" : "bg-slate-50 text-slate-700"}`}>
                                         {needsReview
-                                            ? "Memerlukan pemeriksaan Supervisor. Selisih tetap dicatat dan tidak mengubah saldo sistem."
-                                            : "Kas cocok. Laporan tetap menunggu persetujuan Supervisor setelah dikirim."}
+                                            ? "Ada selisih kas atau pemeriksaan sebelumnya. Selisih tetap dicatat dan tidak mengubah saldo sistem."
+                                            : "Pastikan uang fisik sudah dihitung dan disimpan sebelum mengirim laporan."}
                                     </p>
                                     <PrimaryButton
                                         type="button"
                                         onClick={handleSubmitReport}
                                         disabled={!canSubmit}
                                         icon={<Send size={16} />}
-                                        className="mt-4"
+                                        className="mt-3"
                                     >
                                         {submitting
                                             ? "Mengirim..."
@@ -1066,51 +1008,6 @@ export default function TellerCashReconciliation() {
                 </div>
             )}
         </main>
-    );
-}
-
-function StepProgress({ steps }) {
-    return (
-        <nav
-            aria-label="Tahapan rekonsiliasi kas"
-            className="rounded-xl border border-slate-200 bg-white p-4"
-        >
-            <ol className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {steps.map((step, index) => {
-                    const complete = step.state === "Selesai";
-                    const review = step.state === "Memerlukan pemeriksaan";
-                    const active = step.state === "Sedang dikerjakan";
-                    return (
-                        <li
-                            key={step.label}
-                            className="flex min-w-0 items-start gap-3"
-                        >
-                            <span
-                                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
-                                    complete
-                                        ? "bg-emerald-100 text-emerald-800"
-                                        : review
-                                          ? "bg-amber-100 text-amber-800"
-                                          : active
-                                            ? "bg-blue-100 text-blue-800"
-                                            : "bg-slate-100 text-slate-500"
-                                }`}
-                            >
-                                {complete ? <Check size={15} /> : index + 1}
-                            </span>
-                            <span className="min-w-0">
-                                <span className="block text-sm font-semibold text-slate-800">
-                                    {step.label}
-                                </span>
-                                <span className="block text-xs text-slate-500">
-                                    {step.state}
-                                </span>
-                            </span>
-                        </li>
-                    );
-                })}
-            </ol>
-        </nav>
     );
 }
 
@@ -1154,36 +1051,39 @@ function AmountInput({ id, label, value, onChange, disabled = false }) {
     );
 }
 
-function SummaryRow({ label, value, note, valueClass = "", final = false }) {
+function SummaryTile({ label, value, note, valueClass = "" }) {
     return (
-        <div
-            className={`flex flex-col gap-1 py-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4 ${
-                final ? "border-t border-slate-200 pt-3" : ""
-            }`}
-        >
-            <span
-                className={`text-sm ${
-                    final
-                        ? "font-semibold text-slate-900"
-                        : "text-slate-600"
-                }`}
-            >
+        <div className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-medium text-slate-500">
                 {label}
-                {note && (
-                    <span className="mt-0.5 block text-xs font-normal text-slate-500">
-                        {note}
-                    </span>
-                )}
-            </span>
-            <span
-                className={`break-words text-left font-semibold sm:text-right ${
-                    final ? "text-lg text-slate-950" : "text-sm text-slate-800"
-                } ${valueClass}`}
-            >
+            </p>
+            <p className={`mt-1 break-words text-base font-semibold ${valueClass || "text-slate-900"}`}>
                 {value}
-            </span>
+            </p>
+            {note && <p className="mt-1 text-xs text-slate-500">{note}</p>}
         </div>
     );
+}
+
+function StatusPill({ label, tone }) {
+    const toneClasses = {
+        success: "bg-emerald-100 text-emerald-800",
+        warning: "bg-amber-100 text-amber-800",
+        info: "bg-blue-100 text-blue-800",
+        neutral: "bg-slate-100 text-slate-700",
+    };
+
+    return (
+        <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${toneClasses[tone]}`}>
+            {label}
+        </span>
+    );
+}
+
+function differenceStatus(value) {
+    if (value === null || value === undefined) return "Belum dihitung";
+    if (Number(value) === 0) return "Cocok";
+    return Number(value) > 0 ? "Uang fisik lebih" : "Uang fisik kurang";
 }
 
 function DifferencePanel({ label, value }) {
@@ -1267,7 +1167,9 @@ function TransactionDetails({ transactions }) {
                                     ? "Berhasil"
                                     : transaction.status === "pending"
                                       ? "Pending"
-                                      : "Gagal"}
+                                      : transaction.status === "cancelled"
+                                        ? "Dibatalkan"
+                                        : "Gagal"}
                             </td>
                             <td className="whitespace-nowrap px-3 py-2 text-right">
                                 {formatRupiah(transaction.amount)}
