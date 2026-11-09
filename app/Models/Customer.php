@@ -55,4 +55,9 @@ class Customer extends Model
     {
         return $this->hasMany(PinResetRequest::class);
     }
+
+    public function student(): BelongsTo
+    {
+        return $this->belongsTo(Student::class, 'student_number', 'student_number');
+    }
 }

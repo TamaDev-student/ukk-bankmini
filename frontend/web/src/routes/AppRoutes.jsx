@@ -8,6 +8,7 @@ import ForgotPasswordPage from "../assets/components/pages/auth/ForgotPasswordPa
 
 import AdminDashboard from "../assets/components/pages/admin/AdminDashboard";
 import UserManagement from "../assets/components/pages/admin/UserManagement";
+import StudentMaster from "../assets/components/pages/admin/StudentMaster";
 import CustomerAccount from "../assets/components/pages/admin/CustomerAccount";
 import AdminAccountingJournal from "../pages/admin/AccountingJournal";
 import TransactionReports from "../assets/components/pages/admin/TransactionReports";
@@ -73,6 +74,16 @@ function AppRoutes() {
                     <Route
                         path="user-management"
                         element={<UserManagement />}
+                    />
+
+                    <Route
+                        path="students"
+                        element={<StudentMaster />}
+                    />
+
+                    <Route
+                        path="master-students"
+                        element={<StudentMaster />}
                     />
 
                     <Route

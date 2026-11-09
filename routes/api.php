@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AccountingController;
 use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\AdminCustomerController;
 use App\Http\Controllers\Api\AdminCustomerImportController;
+use App\Http\Controllers\Api\AdminStudentController;
 use App\Http\Controllers\Api\AdminDashboardController;
 use App\Http\Controllers\Api\AdminTransactionReportController;
 use App\Http\Controllers\Api\AdminTransactionReportExportController;
@@ -421,6 +422,15 @@ Route::middleware('auth:sanctum')->group(function () {
                 '/admin/classes',
                 [AdminCustomerController::class, 'classes']
             );
+
+            // Master Data Siswa & Registrasi Nasabah
+            Route::get('/admin/students', [AdminStudentController::class, 'index']);
+            Route::get('/admin/students/summary', [AdminStudentController::class, 'summary']);
+            Route::post('/admin/students/import/preview', [AdminStudentController::class, 'previewImport']);
+            Route::post('/admin/students/import/confirm', [AdminStudentController::class, 'confirmImport']);
+            Route::post('/admin/students/batch-create-accounts', [AdminStudentController::class, 'batchCreateAccounts']);
+            Route::get('/admin/students/{id}', [AdminStudentController::class, 'show']);
+            Route::post('/admin/students/{id}/create-account', [AdminStudentController::class, 'createAccount']);
 
         });
 

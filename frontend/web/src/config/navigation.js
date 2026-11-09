@@ -21,6 +21,7 @@ export const navigationConfig = {
         items: [
             { path: "dashboard", label: "Dashboard", icon: "grid_view" },
             { path: "users", label: "Manajemen Pengguna", icon: "group" },
+            { path: "students", label: "Master Data Siswa", icon: "school" },
             { path: "accounts", label: "Rekening Nasabah", icon: "account_balance_wallet" },
             { path: "transaction-reports", label: "Laporan Transaksi", icon: "summarize" },
             { path: "journal", label: "Jurnal Akuntansi", icon: "menu_book" },
