@@ -14,9 +14,9 @@ function studentTestAdmin(): array
 {
     $admin = User::create([
         'name' => 'Admin Siswa',
-        'username' => 'admin-siswa-'.uniqid(),
+        'username' => 'admin-siswa-' . uniqid(),
         'full_name' => 'Admin Siswa Test',
-        'email' => 'admin-siswa-'.uniqid().'@example.test',
+        'email' => 'admin-siswa-' . uniqid() . '@example.test',
         'password' => Hash::make('Password123'),
         'role' => 'administrator',
         'status' => 'active',
@@ -412,7 +412,7 @@ test('8. batch registration lima siswa menghasilkan tepat lima Customer dengan s
     $students = [];
     for ($i = 1; $i <= 5; $i++) {
         $students[] = Student::create([
-            'student_number' => 'NIS-BATCH5-0'.$i,
+            'student_number' => 'NIS-BATCH5-0' . $i,
             'student_name' => "Siswa Batch Lima Ke-{$i}",
             'class_id' => $schoolClass->id,
             'grade_level' => 'X',
@@ -452,21 +452,23 @@ test('8. batch registration lima siswa menghasilkan tepat lima Customer dengan s
 // =========================================================================
 // 9. Integrasi penuh file Excel Absen 2026-2027 (1.635 siswa, 35 XII AK 4)
 // =========================================================================
-test('9. file riil Absen 2026-2027.xlsx berhasil mengimpor seluruh 1.635 siswa termasuk 35 dari XII AK 4', function () {
+test('9. file Excel sintetis mengimpor 1.636 siswa tanpa data pribadi', function () {
     [$admin, $token] = studentTestAdmin();
-    $fixturePath = base_path('tests/Fixtures/Absen_2026-2027.xlsx');
 
-    if (! file_exists($fixturePath)) {
-        $this->markTestSkipped('Fixture Absen_2026-2027.xlsx tidak ditemukan.');
-    }
+    $fixturePath = base_path('tests/Fixtures/synthetic_students.xlsx');
+
+    expect(file_exists($fixturePath))->toBeTrue();
 
     $uploadedFile = new UploadedFile(
         $fixturePath,
-        'Absen_2026-2027.xlsx',
+        'synthetic_students.xlsx',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         null,
         true
     );
+
+    // Lanjutkan dengan kode preview, konfirmasi,
+    // dan pemeriksaan hasil import yang sudah ada.
 
     $initialUserCount = User::count();
     $initialCustomerCount = Customer::count();
@@ -504,26 +506,26 @@ test('9. file riil Absen 2026-2027.xlsx berhasil mengimpor seluruh 1.635 siswa t
         ->and(Transaction::count())->toBe($initialTransactionCount);
 
     // 3. Verifikasi siswa dari XII AK 4 (kelas belum terkonfigurasi di sistem)
-    $adinda = Student::where('student_number', '18080')->first();
-    expect($adinda)->not->toBeNull()
-        ->and($adinda->student_name)->toBe('ADINDA EKA SILVIA DEVANI')
-        ->and($adinda->grade_level)->toBe('XII')
-        ->and($adinda->cohort_year)->toBe(2024)
-        ->and($adinda->graduation_year)->toBe(2027)
-        ->and($adinda->class_id)->toBeNull()
-        ->and($adinda->original_class)->toBe('XII AK 4')
-        ->and($adinda->customer)->toBeNull()
-        ->and($adinda->has_account)->toBeFalse();
+    $testAk = Student::where('student_number', 'TESTAK0001')->first();
+    expect($testAk)->not->toBeNull()
+        ->and($testAk->student_name)->toBe('SISWA UJI AK 4 0001')
+        ->and($testAk->grade_level)->toBe('XII')
+        ->and($testAk->cohort_year)->toBe(2024)
+        ->and($testAk->graduation_year)->toBe(2027)
+        ->and($testAk->class_id)->toBeNull()
+        ->and($testAk->original_class)->toBe('XII AK 4')
+        ->and($testAk->customer)->toBeNull()
+        ->and($testAk->has_account)->toBeFalse();
 
     // Verifikasi siswa dari kelas yang sah/terkonfigurasi (contoh: XII TKJ 2)
-    $adrian = Student::where('student_number', '17864')->first();
-    expect($adrian)->not->toBeNull()
-        ->and($adrian->student_name)->toBe('ADRIAN CELLOLINO YOLANDA')
-        ->and($adrian->grade_level)->toBe('XII')
-        ->and($adrian->cohort_year)->toBe(2024)
-        ->and($adrian->graduation_year)->toBe(2027)
-        ->and($adrian->class_id)->not->toBeNull()
-        ->and($adrian->original_class)->toBe('XII TKJ 2');
+    $testTkj = Student::where('student_number', 'TESTTKJ0001')->first();
+    expect($testTkj)->not->toBeNull()
+        ->and($testTkj->student_name)->toBe('SISWA UJI TKJ 2 0001')
+        ->and($testTkj->grade_level)->toBe('XII')
+        ->and($testTkj->cohort_year)->toBe(2024)
+        ->and($testTkj->graduation_year)->toBe(2027)
+        ->and($testTkj->class_id)->not->toBeNull()
+        ->and($testTkj->original_class)->toBe('XII TKJ 2');
 
     // 4. Verifikasi jumlah siswa dengan class_id null tepat 35
     expect(Student::whereNull('class_id')->count())->toBe(35)
