@@ -59,7 +59,7 @@ Sistem telah dinormalisasi hingga tahap ke-3 (3NF) dengan penamaan tabel Bahasa 
 - `classes` (kelas)
 - `customers` / nasabah (id, no_rekening, pin_keamanan, balance, dll)
 - `transactions` (id, customer_id, user_id, tanggal, jenis_trans, nominal)
-- `accounting_journals` (id, transaction_id, kode_akun, posisi, jumlah)
+- `journals` (id, transaction_id, kode_akun, posisi, jumlah)
 
 ---
 
