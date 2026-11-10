@@ -467,6 +467,12 @@ Route::middleware('auth:sanctum')->group(function () {
             [CustomerController::class, 'transactions']
         );
 
+        // Unduh dokumen laporan mutasi rekening nasabah (PDF).
+        Route::get(
+            '/customer/statement/download',
+            [CustomerController::class, 'downloadStatement']
+        )->name('customer.statement.download');
+
         // Detail transaksi nasabah.
         Route::get(
             '/customer/transactions/{id}',

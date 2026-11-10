@@ -11,10 +11,13 @@ use App\Models\PasswordResetOtp;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\ActivityLogService;
+use App\Services\CustomerStatementService;
 use App\Services\FcmService;
 use App\Services\TransactionService;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -155,6 +158,48 @@ class CustomerController extends Controller
             'message' => 'Transaction history retrieved successfully.',
             'data' => $transactions,
         ]);
+    }
+
+    /**
+     * Unduh laporan mutasi rekening nasabah dalam format dokumen PDF.
+     */
+    public function downloadStatement(
+        Request $request,
+        CustomerStatementService $statementService
+    ): Response|JsonResponse {
+        $user = $request->user();
+        $customer = $user->customer;
+
+        if (! $customer) {
+            return response()->json([
+                'message' => 'No customer account is linked to this user.',
+            ], 404);
+        }
+
+        $today = CarbonImmutable::now('Asia/Jakarta')->toDateString();
+
+        $validated = $request->validate([
+            'start_date' => ['required', 'date_format:Y-m-d'],
+            'end_date' => [
+                'required',
+                'date_format:Y-m-d',
+                'after_or_equal:start_date',
+                'before_or_equal:'.$today,
+            ],
+        ], [
+            'start_date.required' => 'Tanggal awal periode mutasi wajib diisi.',
+            'start_date.date_format' => 'Format tanggal awal harus berupa YYYY-MM-DD.',
+            'end_date.required' => 'Tanggal akhir periode mutasi wajib diisi.',
+            'end_date.date_format' => 'Format tanggal akhir harus berupa YYYY-MM-DD.',
+            'end_date.after_or_equal' => 'Tanggal akhir tidak boleh lebih awal dari tanggal awal.',
+            'end_date.before_or_equal' => 'Tanggal akhir tidak boleh melebihi hari ini.',
+        ]);
+
+        return $statementService->generatePdfResponse(
+            $customer,
+            $validated['start_date'],
+            $validated['end_date']
+        );
     }
 
     /**
