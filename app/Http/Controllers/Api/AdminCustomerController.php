@@ -46,7 +46,7 @@ class AdminCustomerController extends Controller
     public function index()
     {
         $customers = Customer::query()
-        ->with([
+            ->with([
                 'schoolClass:id,name,major_id',
                 'schoolClass.major:id,name,code',
                 'user:id,email,email_verified_at,role,must_change_password',
@@ -253,6 +253,15 @@ class AdminCustomerController extends Controller
 
         $validated = $request->validated();
 
+        if (
+            ($validated['status'] ?? null) === 'active' &&
+            $customer->user?->status === 'blocked'
+        ) {
+            return response()->json([
+                'message' => 'Pulihkan akun pengguna melalui halaman arsip agar status akun dan rekening tetap konsisten.',
+            ], 409);
+        }
+
         // Periksa jurusan jika class_id dikirim dalam request.
         if (array_key_exists('class_id', $validated)) {
             $newClass = SchoolClass::findOrFail($validated['class_id']);
@@ -309,15 +318,19 @@ class AdminCustomerController extends Controller
             // Sinkronisasi status akun User dengan status rekening.
             if (array_key_exists('status', $validated)) {
                 if ($customer->user) {
-                    $customer->user->update([
+                    $customer->user->forceFill([
                         'status' => $validated['status'],
-                    ]);
+                        'blocked_at' => $validated['status'] === 'blocked' ? now() : null,
+                    ])->save();
+
+                    if ($validated['status'] === 'blocked') {
+                        $customer->user->tokens()->delete();
+                    }
                 }
             }
         });
 
-        // Bersihkan cache percobaan PIN jika rekening diaktifkan kembali.
-        if (($validated['status'] ?? null) === 'active') {
+        if (array_key_exists('status', $validated)) {
             Cache::forget(
                 "customer_pin_failed_attempts_{$customer->id}"
             );

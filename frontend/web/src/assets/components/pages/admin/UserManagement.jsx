@@ -39,7 +39,6 @@ const INITIAL_FORM_STATE = {
     password: "",
     passwordConfirmation: "",
     role: "administrator",
-    status: "active",
 };
 
 async function requestUsers(signal) {
@@ -55,7 +54,11 @@ function UserManagement() {
     const [isLoading, setIsLoading] = useState(true);
     const [loadError, setLoadError] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
+    const [actionError, setActionError] = useState("");
     const usersRequestRef = useRef(null);
+    const [detailUser, setDetailUser] = useState(null);
+    const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+    const [detailError, setDetailError] = useState("");
 
     // State filter dan pencarian
     const [searchQuery, setSearchQuery] = useState("");
@@ -156,7 +159,6 @@ function UserManagement() {
             password: "",
             passwordConfirmation: "",
             role: user.role || "teller",
-            status: String(user.status ?? "").toLowerCase() === "blocked" ? "blocked" : "active",
         });
         setFieldErrors({});
         setFormError("");
@@ -249,7 +251,6 @@ function UserManagement() {
                     username: formData.username.trim(),
                     email: formData.email.trim(),
                     role: formData.role,
-                    status: formData.status,
                 };
 
                 if (formData.password) {
@@ -275,26 +276,8 @@ function UserManagement() {
                 };
 
                 const response = await api.post("/admin/users", createPayload);
-                const newUser = response.data?.data;
-                let statusUpdateWarning = "";
-
-                // Jika status awal yang dipilih adalah diblokir, perbarui statusnya
-                if (formData.status === "blocked" && newUser?.id) {
-                    try {
-                        await api.put(`/admin/users/${newUser.id}`, { status: "blocked" });
-                    } catch (statusUpdateError) {
-                        console.error(
-                            "Pengguna dibuat tetapi gagal diblokir:",
-                            statusUpdateError
-                        );
-                        statusUpdateWarning =
-                            " Pengguna dibuat, tetapi gagal diubah ke status diblokir. Silakan blokir dari daftar pengguna.";
-                    }
-                }
-
                 setSuccessMessage(
-                    (response.data?.message || `Pengguna "${formData.fullName.trim()}" berhasil didaftarkan.`) +
-                    statusUpdateWarning
+                    response.data?.message || `Pengguna "${formData.fullName.trim()}" berhasil didaftarkan.`
                 );
             }
 
@@ -336,10 +319,9 @@ function UserManagement() {
 
     // Toggle Aktif / Blokir pengguna
     const handleToggleStatus = async (user) => {
-        const rawStatus = String(user.status ?? "").toLowerCase();
-        const isCurrentlyBlocked = ["blocked", "diblokir", "inactive", "nonaktif"].includes(rawStatus);
-        const nextStatus = isCurrentlyBlocked ? "active" : "blocked";
-        const actionLabel = isCurrentlyBlocked ? "mengaktifkan kembali" : "memblokir";
+        const isBlocked = String(user.status ?? "").toLowerCase() === "blocked";
+        const nextStatus = isBlocked ? "active" : "blocked";
+        const actionLabel = isBlocked ? "mengaktifkan kembali" : "memblokir";
 
         if (!window.confirm(`Apakah Anda yakin ingin ${actionLabel} akun "${user.full_name || user.username}"?`)) {
             return;
@@ -350,15 +332,15 @@ function UserManagement() {
             setSuccessMessage(
                 `Akun "${user.full_name || user.username}" berhasil diubah menjadi ${nextStatus === "active" ? "Aktif" : "Diblokir"}.`
             );
+            setActionError("");
             await fetchUsers();
         } catch (error) {
-            alert(error.response?.data?.message || "Gagal mengubah status akun pengguna.");
+            setActionError(error.response?.data?.message || "Gagal memblokir akun pengguna.");
         }
     };
 
-    // Hapus pengguna
-    const handleDeleteUser = async (user) => {
-        if (!window.confirm(`Hapus pengguna "${user.full_name || user.username}"? Jika pengguna memiliki riwayat transaksi atau laporan keuangan, akun akan diblokir agar riwayat audit tetap tersimpan.`)) {
+    const handleArchiveUser = async (user) => {
+        if (!window.confirm(`Blokir dan arsipkan akun "${user.full_name || user.username}"? Data rekening dan riwayat transaksi akan tetap tersimpan.`)) {
             return;
         }
 
@@ -366,14 +348,33 @@ function UserManagement() {
             const response = await api.delete(`/admin/users/${user.id}`);
             setSuccessMessage(
                 response.data?.message ||
-                    `Pengguna "${user.full_name || user.username}" berhasil diproses.`
+                    `Akun "${user.full_name || user.username}" berhasil dipindahkan ke arsip.`
             );
+            setActionError("");
             await fetchUsers();
         } catch (error) {
-            alert(
+            setActionError(
                 error.response?.data?.message ||
-                "Gagal menghapus pengguna. User mungkin memiliki transaksi yang terhubung."
+                "Gagal memblokir dan mengarsipkan akun pengguna."
             );
+        }
+    };
+
+    const handleShowDetail = async (user) => {
+        setDetailUser(null);
+        setDetailError("");
+        setIsLoadingDetail(true);
+
+        try {
+            const response = await api.get(`/admin/users/${user.id}`);
+            setDetailUser(response.data?.data ?? null);
+            if (!response.data?.data) setDetailError("Detail pengguna tidak tersedia.");
+        } catch (error) {
+            setDetailError(
+                error.response?.data?.message || "Gagal mengambil detail pengguna."
+            );
+        } finally {
+            setIsLoadingDetail(false);
         }
     };
 
@@ -393,9 +394,7 @@ function UserManagement() {
                 !roleFilter ||
                 String(user.role ?? "").toLowerCase() === roleFilter.toLowerCase();
 
-            const rawStatus = String(user.status ?? "").toLowerCase();
-            const isBlocked = ["blocked", "diblokir", "inactive", "nonaktif"].includes(rawStatus);
-
+            const isBlocked = String(user.status ?? "").toLowerCase() === "blocked";
             const matchesStatus =
                 !statusFilter ||
                 (statusFilter === "aktif" && !isBlocked) ||
@@ -449,6 +448,15 @@ function UserManagement() {
                         onClick={() => setSuccessMessage("")}
                         className="text-emerald-700 hover:text-emerald-900 p-1"
                     >
+                        <span className="material-symbols-outlined text-[18px]">close</span>
+                    </button>
+                </div>
+            )}
+
+            {actionError && (
+                <div className="p-3 bg-error-container/40 border border-error/20 text-error rounded-lg flex items-center justify-between text-sm">
+                    <span>{actionError}</span>
+                    <button type="button" onClick={() => setActionError("")} aria-label="Tutup notifikasi">
                         <span className="material-symbols-outlined text-[18px]">close</span>
                     </button>
                 </div>
@@ -552,15 +560,8 @@ function UserManagement() {
                                     const roleLabel = getRoleLabel(user.role);
                                     const statusLabel = getStatusLabel(user.status);
 
-                                    const rawStatus = String(user.status ?? "").toLowerCase();
-
-                                    const isBlocked = [
-                                        "blocked",
-                                        "diblokir",
-                                        "inactive",
-                                        "nonaktif",
-                                    ].includes(rawStatus);
-
+                                    const canArchive = ["teller", "nasabah"].includes(user.role);
+                                    const isBlocked = String(user.status ?? "").toLowerCase() === "blocked";
                                     const isLast = index === filteredUsers.length - 1;
 
                                     return (
@@ -595,15 +596,9 @@ function UserManagement() {
 
                                             <td className="py-3.5 px-4">
                                                 <span
-                                                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-label-sm text-label-sm font-w-label-sm font-semibold ${isBlocked
-                                                            ? "bg-error-container text-on-error-container"
-                                                            : "bg-tertiary-fixed text-on-tertiary-fixed"
-                                                        }`}
+                                                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-label-sm text-label-sm font-w-label-sm font-semibold ${isBlocked ? "bg-error-container text-on-error-container" : "bg-tertiary-fixed text-on-tertiary-fixed"}`}
                                                 >
-                                                    <span
-                                                        className={`w-1.5 h-1.5 rounded-full ${isBlocked ? "bg-error" : "bg-tertiary"
-                                                            }`}
-                                                    />
+                                                    <span className={`w-1.5 h-1.5 rounded-full ${isBlocked ? "bg-error" : "bg-tertiary"}`} />
 
                                                     {statusLabel}
                                                 </span>
@@ -611,6 +606,16 @@ function UserManagement() {
 
                                             <td className="py-3.5 px-4 text-right">
                                                 <div className="inline-flex items-center gap-2 justify-end">
+                                                    <button
+                                                        className="text-secondary hover:text-on-surface font-label-sm text-label-sm font-w-label-sm cursor-pointer"
+                                                        type="button"
+                                                        onClick={() => handleShowDetail(user)}
+                                                    >
+                                                        Detail
+                                                    </button>
+
+                                                    <span className="text-outline-variant">·</span>
+
                                                     <button
                                                         className="text-primary hover:underline font-label-sm text-label-sm font-w-label-sm font-semibold cursor-pointer"
                                                         type="button"
@@ -621,23 +626,23 @@ function UserManagement() {
 
                                                     <span className="text-outline-variant">·</span>
 
-                                                    <button
-                                                        className="text-secondary hover:text-on-surface font-label-sm text-label-sm font-w-label-sm cursor-pointer"
-                                                        type="button"
-                                                        onClick={() => handleToggleStatus(user)}
-                                                    >
-                                                        {isBlocked ? "Aktifkan" : "Blokir"}
-                                                    </button>
-
-                                                    <span className="text-outline-variant">·</span>
-
-                                                    <button
-                                                        className="text-error hover:underline font-label-sm text-label-sm font-w-label-sm cursor-pointer"
-                                                        type="button"
-                                                        onClick={() => handleDeleteUser(user)}
-                                                    >
-                                                        Hapus
-                                                    </button>
+                                                    {canArchive ? (
+                                                        <button
+                                                            className="text-error hover:underline font-label-sm text-label-sm font-w-label-sm cursor-pointer"
+                                                            type="button"
+                                                            onClick={() => handleArchiveUser(user)}
+                                                        >
+                                                            Blokir/Arsipkan
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            className="text-secondary hover:text-on-surface font-label-sm text-label-sm font-w-label-sm cursor-pointer"
+                                                            type="button"
+                                                            onClick={() => handleToggleStatus(user)}
+                                                        >
+                                                            {isBlocked ? "Aktifkan" : "Blokir"}
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
@@ -667,6 +672,46 @@ function UserManagement() {
                     </div>
                 </div>
             </div>
+
+            {(isLoadingDetail || detailError || detailUser) && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+                    role="dialog"
+                    aria-modal="true"
+                >
+                    <div className="w-full max-w-lg rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-space-lg shadow-xl">
+                        <div className="mb-4 flex items-center justify-between">
+                            <h2 className="font-headline-sm text-headline-sm font-w-headline-sm text-on-surface">
+                                Detail Pengguna
+                            </h2>
+                            <button
+                                type="button"
+                                className="text-secondary hover:text-on-surface"
+                                aria-label="Tutup detail"
+                                onClick={() => {
+                                    setDetailUser(null);
+                                    setDetailError("");
+                                }}
+                            >
+                                <span className="material-symbols-outlined">close</span>
+                            </button>
+                        </div>
+                        {isLoadingDetail ? (
+                            <p className="py-6 text-center text-secondary">Memuat detail pengguna...</p>
+                        ) : detailError ? (
+                            <p className="py-6 text-center text-error">{detailError}</p>
+                        ) : detailUser ? (
+                            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div><dt className="text-xs text-secondary">Nama</dt><dd className="font-medium">{detailUser.full_name || detailUser.name || "-"}</dd></div>
+                                <div><dt className="text-xs text-secondary">Username</dt><dd className="font-medium">{detailUser.username || "-"}</dd></div>
+                                <div><dt className="text-xs text-secondary">Email</dt><dd className="font-medium">{detailUser.email || "-"}</dd></div>
+                                <div><dt className="text-xs text-secondary">Peran</dt><dd className="font-medium">{getRoleLabel(detailUser.role)}</dd></div>
+                                <div><dt className="text-xs text-secondary">Status</dt><dd className="font-medium">{getStatusLabel(detailUser.status)}</dd></div>
+                            </dl>
+                        ) : null}
+                    </div>
+                </div>
+            )}
 
             {/* Modal Tambah / Ubah Pengguna */}
             {isModalOpen && (
@@ -841,8 +886,7 @@ function UserManagement() {
                                 </div>
                             </div>
 
-                            {/* Peran Akses & Status Awal (Grid 2 Kolom) */}
-                            <div className="grid grid-cols-2 gap-space-sm">
+                            <div>
                                 <div>
                                     <label className="block font-label-md text-label-md font-w-label-md text-on-surface mb-1">
                                         Peran Akses <span className="text-red-500">*</span>
@@ -858,21 +902,6 @@ function UserManagement() {
                                         <option value="teller">Teller</option>
                                         <option value="supervisor">Supervisor</option>
                                         <option value="nasabah">Nasabah</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block font-label-md text-label-md font-w-label-md text-on-surface mb-1">
-                                        Status Awal
-                                    </label>
-                                    <select
-                                        className="w-full h-10 px-3 bg-surface rounded-lg text-on-surface focus:outline-none border border-outline-variant/30 cursor-pointer"
-                                        value={formData.status}
-                                        onChange={(e) =>
-                                            setFormData((prev) => ({ ...prev, status: e.target.value }))
-                                        }
-                                    >
-                                        <option value="active">Aktif</option>
-                                        <option value="blocked">Diblokir</option>
                                     </select>
                                 </div>
                             </div>

@@ -47,11 +47,13 @@ function adminWithToken(): array
     return [$admin, $token];
 }
 
-test('administrator dapat melihat daftar semua user', function () {
+test('daftar manajemen tidak menampilkan akun nasabah dan teller yang sudah diarsipkan', function () {
     [, $token] = adminWithToken();
 
     makeUser(['role' => 'teller']);
     makeUser(['role' => 'supervisor']);
+    $archived = makeUser(['role' => 'teller', 'status' => 'blocked']);
+    $blockedAdministrator = makeUser(['role' => 'administrator', 'status' => 'blocked']);
 
     $response = $this->withToken($token)->getJson('/api/admin/users');
 
@@ -61,7 +63,22 @@ test('administrator dapat melihat daftar semua user', function () {
             'data' => [
                 '*' => ['id', 'name', 'username', 'full_name', 'email', 'role', 'status'],
             ],
-        ]);
+        ])
+        ->assertJsonMissing(['id' => $archived->id])
+        ->assertJsonFragment(['id' => $blockedAdministrator->id]);
+});
+
+test('administrator tidak dapat mengarsipkan akunnya sendiri', function () {
+    [$admin, $token] = adminWithToken();
+
+    $this->withToken($token)
+        ->deleteJson('/api/admin/users/'.$admin->id)
+        ->assertStatus(409);
+
+    $this->assertDatabaseHas('users', [
+        'id' => $admin->id,
+        'status' => 'active',
+    ]);
 });
 
 test('teller tidak dapat mengakses daftar user (403)', function () {
@@ -292,6 +309,7 @@ test('administrator dapat update status user menjadi blocked', function () {
         'id' => $target->id,
         'status' => 'blocked',
     ]);
+    expect($target->fresh()->blocked_at)->not->toBeNull();
 });
 
 test('administrator dapat update role user', function () {
@@ -404,21 +422,143 @@ test('teller tidak dapat update user (403)', function () {
         ->assertForbidden();
 });
 
-test('administrator dapat menghapus user yang tidak memiliki transaksi', function () {
+test('administrator dapat mengarsipkan user tanpa menghapus akun', function () {
     [, $token] = adminWithToken();
     $target = makeUser(['role' => 'teller']);
+    $target->createToken('active-session');
 
     $this->withToken($token)
         ->deleteJson('/api/admin/users/'.$target->id)
         ->assertOk()
-        ->assertJsonPath('message', 'User berhasil dihapus.');
+        ->assertJsonPath('message', 'Akun berhasil diblokir dan dipindahkan ke arsip.')
+        ->assertJsonPath('data.archived', true);
 
-    $this->assertDatabaseMissing('users', [
+    $this->assertDatabaseHas('users', [
         'id' => $target->id,
+        'status' => 'blocked',
+    ]);
+    $this->assertDatabaseMissing('personal_access_tokens', [
+        'tokenable_id' => $target->id,
+        'name' => 'active-session',
+    ]);
+    $this->postJson('/api/login', [
+        'username' => $target->username,
+        'password' => 'password123',
+    ])->assertForbidden();
+
+    $this->withToken($token)
+        ->getJson('/api/admin/users')
+        ->assertJsonMissing(['id' => $target->id]);
+    $this->withToken($token)
+        ->getJson('/api/admin/users/archived')
+        ->assertJsonFragment(['id' => $target->id]);
+});
+
+test('administrator dapat memulihkan akun teller dari arsip', function () {
+    [, $token] = adminWithToken();
+    $target = makeUser([
+        'role' => 'teller',
+        'status' => 'blocked',
+        'blocked_at' => now(),
+    ]);
+
+    $this->withToken($token)
+        ->putJson('/api/admin/users/'.$target->id.'/restore')
+        ->assertOk()
+        ->assertJsonPath('data.status', 'active');
+
+    $this->assertDatabaseHas('users', [
+        'id' => $target->id,
+        'status' => 'active',
+        'blocked_at' => null,
+    ]);
+
+    $this->withToken($token)
+        ->getJson('/api/admin/users')
+        ->assertJsonFragment(['id' => $target->id]);
+    $this->withToken($token)
+        ->getJson('/api/admin/users/archived')
+        ->assertJsonMissing(['id' => $target->id]);
+});
+
+test('nasabah yang diarsipkan mempertahankan rekening dan transaksi serta dapat dipulihkan', function () {
+    [, $token] = adminWithToken();
+    $customerUser = makeUser(['role' => 'nasabah']);
+
+    $majorId = DB::table('majors')->insertGetId([
+        'name' => 'Rekayasa Perangkat Lunak',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    $classId = DB::table('classes')->insertGetId([
+        'name' => 'XII RPL',
+        'major_id' => $majorId,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    $customerId = DB::table('customers')->insertGetId([
+        'account_number' => 'NASABAH001',
+        'student_number' => 'NISNASABAH001',
+        'student_name' => 'Nasabah Test',
+        'class_id' => $classId,
+        'user_id' => $customerUser->id,
+        'status' => 'active',
+        'security_pin' => Hash::make('123456'),
+        'balance' => 100000,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    DB::table('transactions')->insert([
+        'customer_id' => $customerId,
+        'user_id' => $customerUser->id,
+        'transaction_date' => now(),
+        'transaction_type' => 'deposit',
+        'amount' => 50000,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $this->withToken($token)
+        ->deleteJson('/api/admin/users/'.$customerUser->id)
+        ->assertOk()
+        ->assertJsonPath('data.archived', true);
+
+    $this->assertDatabaseHas('customers', [
+        'id' => $customerId,
+        'user_id' => $customerUser->id,
+        'status' => 'blocked',
+    ]);
+    $this->assertDatabaseHas('transactions', [
+        'customer_id' => $customerId,
+        'user_id' => $customerUser->id,
+    ]);
+    $this->withToken($token)
+        ->getJson('/api/admin/users/archived')
+        ->assertJsonFragment(['id' => $customerUser->id]);
+    $this->withToken($token)
+        ->putJson('/api/admin/customers/'.$customerId, ['status' => 'active'])
+        ->assertStatus(409);
+
+    $this->withToken($token)
+        ->putJson('/api/admin/users/'.$customerUser->id.'/restore')
+        ->assertOk();
+
+    $this->assertDatabaseHas('users', [
+        'id' => $customerUser->id,
+        'status' => 'active',
+    ]);
+    $this->assertDatabaseHas('customers', [
+        'id' => $customerId,
+        'status' => 'active',
+    ]);
+    $this->assertDatabaseHas('transactions', [
+        'customer_id' => $customerId,
+        'user_id' => $customerUser->id,
     ]);
 });
 
-test('delete user mengembalikan 404 jika id tidak ada', function () {
+test('arsip user mengembalikan 404 jika id tidak ada', function () {
     [, $token] = adminWithToken();
 
     $this->withToken($token)
@@ -426,7 +566,7 @@ test('delete user mengembalikan 404 jika id tidak ada', function () {
         ->assertNotFound();
 });
 
-test('teller tidak dapat menghapus user (403)', function () {
+test('teller tidak dapat mengarsipkan user (403)', function () {
     $teller = makeUser(['role' => 'teller']);
     $token = $teller->createToken('test')->plainTextToken;
     $target = makeUser();
@@ -436,7 +576,17 @@ test('teller tidak dapat menghapus user (403)', function () {
         ->assertForbidden();
 });
 
-test('supervisor tidak dapat menghapus user (403)', function () {
+test('teller tidak dapat memulihkan user dari arsip (403)', function () {
+    $teller = makeUser(['role' => 'teller']);
+    $token = $teller->createToken('test')->plainTextToken;
+    $target = makeUser(['role' => 'teller', 'status' => 'blocked']);
+
+    $this->withToken($token)
+        ->putJson('/api/admin/users/'.$target->id.'/restore')
+        ->assertForbidden();
+});
+
+test('supervisor tidak dapat mengarsipkan user (403)', function () {
     $supervisor = makeUser(['role' => 'supervisor']);
     $token = $supervisor->createToken('test')->plainTextToken;
     $target = makeUser();
@@ -446,7 +596,7 @@ test('supervisor tidak dapat menghapus user (403)', function () {
         ->assertForbidden();
 });
 
-test('delete user yang memiliki transaksi memblokir akun tanpa menghapus riwayat', function () {
+test('arsip teller dengan transaksi mencabut akses tanpa menghapus riwayat', function () {
     [, $token] = adminWithToken();
     $teller = makeUser(['role' => 'teller']);
 
@@ -489,9 +639,7 @@ test('delete user yang memiliki transaksi memblokir akun tanpa menghapus riwayat
     $this->withToken($token)
         ->deleteJson('/api/admin/users/'.$teller->id)
         ->assertOk()
-        ->assertJsonPath('data.deleted', false)
-        ->assertJsonPath('data.deactivated', true)
-        ->assertJsonPath('message', 'Pengguna memiliki riwayat transaksi atau laporan keuangan, sehingga tidak dihapus. Akun telah diblokir dan seluruh token akses dicabut agar riwayat audit tetap utuh.');
+        ->assertJsonPath('data.archived', true);
 
     $this->assertDatabaseHas('users', [
         'id' => $teller->id,
@@ -506,7 +654,7 @@ test('delete user yang memiliki transaksi memblokir akun tanpa menghapus riwayat
     ]);
 });
 
-test('delete teller yang memiliki laporan harian memblokir akun dan mempertahankan laporan', function () {
+test('arsip teller dengan laporan harian mempertahankan laporan', function () {
     [, $token] = adminWithToken();
     $teller = makeUser(['role' => 'teller']);
     $report = DailyReport::create([
@@ -524,8 +672,7 @@ test('delete teller yang memiliki laporan harian memblokir akun dan mempertahank
     $this->withToken($token)
         ->deleteJson('/api/admin/users/'.$teller->id)
         ->assertOk()
-        ->assertJsonPath('data.deleted', false)
-        ->assertJsonPath('data.deactivated', true);
+        ->assertJsonPath('data.archived', true);
 
     $this->assertDatabaseHas('users', [
         'id' => $teller->id,

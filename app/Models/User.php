@@ -69,6 +69,7 @@ class User extends Authenticatable implements PasskeyUser
             'must_change_password' => 'boolean',
             'temporary_password_expires_at' => 'datetime',
             'two_factor_confirmed_at' => 'datetime',
+            'blocked_at' => 'datetime',
         ];
     }
 

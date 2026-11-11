@@ -4,8 +4,8 @@ use App\Http\Controllers\Api\AccountingController;
 use App\Http\Controllers\Api\ActivityLogController;
 use App\Http\Controllers\Api\AdminCustomerController;
 use App\Http\Controllers\Api\AdminCustomerImportController;
-use App\Http\Controllers\Api\AdminStudentController;
 use App\Http\Controllers\Api\AdminDashboardController;
+use App\Http\Controllers\Api\AdminStudentController;
 use App\Http\Controllers\Api\AdminTransactionReportController;
 use App\Http\Controllers\Api\AdminTransactionReportExportController;
 use App\Http\Controllers\Api\AdminUserController;
@@ -341,6 +341,12 @@ Route::middleware('auth:sanctum')->group(function () {
                 [AdminUserController::class, 'store']
             );
 
+            // Daftar akun teller dan nasabah yang diblokir.
+            Route::get(
+                '/admin/users/archived',
+                [AdminUserController::class, 'archived']
+            );
+
             // Detail pengguna.
             Route::get(
                 '/admin/users/{id}',
@@ -353,10 +359,16 @@ Route::middleware('auth:sanctum')->group(function () {
                 [AdminUserController::class, 'update']
             );
 
-            // Menghapus pengguna.
+            // Memblokir dan mengarsipkan pengguna tanpa menghapus datanya.
             Route::delete(
                 '/admin/users/{id}',
-                [AdminUserController::class, 'destroy']
+                [AdminUserController::class, 'archive']
+            );
+
+            // Memulihkan pengguna dari arsip.
+            Route::put(
+                '/admin/users/{id}/restore',
+                [AdminUserController::class, 'restore']
             );
 
             // Daftar rekening nasabah.
